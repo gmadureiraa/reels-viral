@@ -46,9 +46,10 @@ Reel viral (link IG)
 
 ```bash
 cp .env.example .env.local
-# preenche APIFY_API_KEY + GEMINI_API_KEY (mesmo do SV)
+# preenche todas as keys (Apify, Gemini, Neon DB + Auth)
 
 bun install
+bun scripts/migrate.ts   # cria tabelas no Neon (idempotente)
 bun dev
 ```
 
@@ -57,8 +58,40 @@ Abre `http://localhost:3000`.
 ### Env vars
 
 ```
-APIFY_API_KEY=...     # apify.com → Settings → API tokens
-GEMINI_API_KEY=...    # ai.google.dev → Get API key
+# APIs externas
+APIFY_API_KEY=...                    # apify.com → Settings → API tokens
+GEMINI_API_KEY=...                   # ai.google.dev → Get API key
+
+# Neon Postgres
+DATABASE_URL=...                     # connection string com pooler
+
+# Neon Auth (Better Auth)
+NEXT_PUBLIC_NEON_AUTH_URL=...        # endpoint pra signin/signup
+NEON_AUTH_JWKS_URL=...               # JWKS pra validar JWT no server
+
+# Neon Data API (opcional, não usado ainda)
+NEXT_PUBLIC_NEON_DATA_API=...
+```
+
+### Deploy Vercel
+
+Vercel Hobby tem limite de 60s no Node runtime. As 4 env vars acima
+precisam estar configuradas em **Production** scope:
+
+```bash
+# Production env vars (adicionar pelo dashboard ou CLI)
+vercel env add APIFY_API_KEY production
+vercel env add GEMINI_API_KEY production
+vercel env add DATABASE_URL production
+vercel env add NEXT_PUBLIC_NEON_AUTH_URL production
+vercel env add NEON_AUTH_JWKS_URL production
+vercel env add NEXT_PUBLIC_NEON_DATA_API production
+
+# Migration roda só uma vez (depois que DATABASE_URL tá no .env.local)
+bun scripts/migrate.ts
+
+# Deploy
+vercel --prod
 ```
 
 ---
