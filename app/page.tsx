@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -40,8 +40,29 @@ const OBJETIVOS: Array<{
   },
 ];
 
+/**
+ * Gera ou recupera um device ID persistente no localStorage.
+ * Usado como fingerprint adicional pra rate limit de usuários anônimos.
+ * Dificulta abuse por troca de IP sem criar conta.
+ */
+function getOrCreateDeviceId(): string {
+  const KEY = "rv_device_id";
+  try {
+    const existing = localStorage.getItem(KEY);
+    if (existing) return existing;
+    const newId = crypto.randomUUID();
+    localStorage.setItem(KEY, newId);
+    return newId;
+  } catch {
+    // localStorage bloqueado (modo privado extremo) — retorna fallback vazio
+    return "";
+  }
+}
+
 export default function Home() {
   const [step, setStep] = useState<"form" | "loading" | "result">("form");
+  // Referência ao device ID — inicializado no useEffect pra evitar SSR mismatch
+  const deviceIdRef = useRef<string>("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [tema, setTema] = useState("");
   const [objetivo, setObjetivo] =
@@ -50,6 +71,11 @@ export default function Home() {
   const [persona, setPersona] = useState("");
   const [nicho, setNicho] = useState("");
   const [result, setResult] = useState<AdaptResponse | null>(null);
+
+  // Inicializa device ID no cliente (pós-hidratação)
+  useEffect(() => {
+    deviceIdRef.current = getOrCreateDeviceId();
+  }, []);
 
   async function handlePaste() {
     try {
@@ -84,9 +110,17 @@ export default function Home() {
     setResult(null);
 
     try {
+      // Monta headers — inclui device fingerprint pra rate limit anônimo
+      const reqHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (deviceIdRef.current) {
+        reqHeaders["X-Device-Id"] = deviceIdRef.current;
+      }
+
       const res = await fetch("/api/adapt-reel", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({
           sourceUrl: sourceUrl.trim(),
           tema: tema.trim(),

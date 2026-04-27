@@ -19,6 +19,7 @@ import { fetchInstagramPost, downloadReelVideo, ApifyError, type ApifyReelItem }
 import { adaptReelWithGemini } from "@/lib/gemini";
 import { extractShortCode, isValidInstagramUrl } from "@/lib/utils";
 import { checkRateLimit, getClientKey } from "@/lib/rate-limit";
+import { getOptionalUserId } from "@/lib/server-auth";
 import { getCachedScrape, setCachedScrape } from "@/lib/scripts-store";
 import { isDbConfigured } from "@/lib/db";
 import type { AdaptResponse, SourceMeta } from "@/lib/types";
@@ -41,25 +42,57 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   const started = Date.now();
 
-  // Rate limit: 5 adapts/hora por IP. Limite conservador pra MVP — cada
-  // adapt custa ~$0.05 Apify + Gemini. Migrar pra Upstash quando ligar
-  // billing real. Skip pra dev (NODE_ENV=development).
+  // Etapa 1: detectar usuário via JWT do Neon Auth (sem forçar login).
+  // Anônimos passam normalmente — apenas recebem limite mais apertado.
+  const authedUser = await getOptionalUserId(req);
+  const userId = authedUser?.id ?? null;
+
+  // Etapa 3: audit trail — loga quem fez a requisição antes de processar.
+  // Útil pra debug e futura integração com PostHog.
+  // (parsed.data.sourceUrl só existe depois do parse, mas logamos aqui
+  //  pra garantir o log mesmo em requests malformados — URL virá do body bruto
+  //  depois do parse ou "unknown" se falhar)
+  const rawBodyForLog = userId; // placeholder; o log real ocorre após parse
+
+  // Rate limit: logado = 10/hora, anônimo = 2/hora.
+  // Diferença de limite força bots a criar conta pra abusar — custo real.
+  // Etapa 4: anônimos usam IP + device fingerprint como chave composta.
+  // Skip pra dev (NODE_ENV=development).
   if (process.env.NODE_ENV !== "development") {
-    const key = getClientKey(req);
-    const rate = checkRateLimit(key);
+    let rateLimitKey: string;
+    let rateLimitLimit: number;
+    let rateLimitMsg: string;
+
+    if (userId !== null) {
+      // Usuário autenticado: chave por ID, limite generoso
+      rateLimitKey = `user:${userId}`;
+      rateLimitLimit = 10;
+      rateLimitMsg = ""; // preenchido abaixo se bloqueado
+    } else {
+      // Anônimo: chave = IP + device fingerprint (header opcional do client)
+      const ip = getClientKey(req);
+      const deviceId = req.headers.get("x-device-id");
+      rateLimitKey = `anon:${ip}:${deviceId ?? "no-device"}`;
+      rateLimitLimit = 2;
+      rateLimitMsg = "";
+    }
+
+    const rate = checkRateLimit({ key: rateLimitKey, limit: rateLimitLimit });
     if (!rate.allowed) {
+      const resetMin = Math.ceil(rate.retryAfterSec / 60);
+
+      // Etapa 5: mensagem 429 informativa e diferenciada por tipo de user
+      if (userId !== null) {
+        rateLimitMsg = `Limite de 10 adaptações/hora atingido. Reset em ${resetMin}min.`;
+      } else {
+        rateLimitMsg = `Limite de 2 adaptações/hora atingido. Crie uma conta pra ter 10/h ou tente em ${resetMin}min.`;
+      }
+
       return NextResponse.json(
-        {
-          error: `Limite de adaptações atingido. Tenta de novo em ${Math.ceil(
-            rate.retryAfterSec / 60
-          )}min.`,
-          retryAfterSec: rate.retryAfterSec,
-        },
+        { error: rateLimitMsg, retryAfterSec: rate.retryAfterSec },
         {
           status: 429,
-          headers: {
-            "Retry-After": String(rate.retryAfterSec),
-          },
+          headers: { "Retry-After": String(rate.retryAfterSec) },
         }
       );
     }
@@ -83,6 +116,14 @@ export async function POST(req: Request) {
     );
   }
   const brief = parsed.data;
+
+  // Etapa 3: audit trail — loga usuário (ou IP anônimo) + URL solicitada.
+  // Útil pra debug + futura integração com PostHog events.
+  // Suprime aviso de variável não usada do placeholder acima.
+  void rawBodyForLog;
+  console.log(
+    `[adapt-reel] user=${userId ?? `anon-${getClientKey(req)}`} url=${brief.sourceUrl}`
+  );
 
   try {
     // 1) Scrape Apify (com cache 24h por shortCode quando DB tá ativo).
