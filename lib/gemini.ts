@@ -266,7 +266,11 @@ Devolva APENAS o JSON no schema fornecido. Sem prefácio, sem markdown.`;
     generationConfig: {
       temperature: 0.85,
       topP: 0.95,
-      maxOutputTokens: 8192,
+      // 8192 truncava o JSON quando o storyboard tinha 8-10 cenas com
+      // visual + copy + broll detalhados (~11k chars). 16384 cobre P99.
+      // Gemini Flash suporta até 65K output, mas 16K é suficiente e
+      // mantém latência baixa.
+      maxOutputTokens: 16384,
       responseMimeType: "application/json",
       // @ts-expect-error — responseSchema é suportado mas tipo do SDK ainda não tem
       responseSchema: RESPONSE_SCHEMA,
