@@ -19,6 +19,7 @@ import { isValidInstagramUrl } from "@/lib/utils";
 import type { AdaptBrief, AdaptResponse } from "@/lib/types";
 import { ResultView } from "@/components/result-view";
 import { LoadingPipeline } from "@/components/loading-pipeline";
+import { AuthBar } from "@/components/auth-bar";
 
 const OBJETIVOS: Array<{
   id: AdaptBrief["objetivo"];
@@ -189,7 +190,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Link
               href="/meus-roteiros"
               className="rv-btn rv-btn-ghost"
@@ -214,6 +215,7 @@ export default function Home() {
             >
               <Film size={12} /> Sequência Viral
             </a>
+            <AuthBar />
           </div>
         </div>
       </header>

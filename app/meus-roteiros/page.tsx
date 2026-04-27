@@ -11,22 +11,27 @@ import {
   listScripts,
 } from "@/lib/storage";
 import { formatNumber } from "@/lib/utils";
+import { AuthBar } from "@/components/auth-bar";
 
 export default function MyScriptsPage() {
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setScripts(listScripts());
-    setHydrated(true);
+    void (async () => {
+      const list = await listScripts();
+      setScripts(list);
+      setHydrated(true);
+    })();
   }, []);
 
-  function handleDelete(id: string, e: React.MouseEvent) {
+  async function handleDelete(id: string, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
     if (!confirm("Apagar esse roteiro? Não dá pra desfazer.")) return;
-    deleteScript(id);
-    setScripts(listScripts());
+    await deleteScript(id);
+    const list = await listScripts();
+    setScripts(list);
     toast.success("Roteiro apagado");
   }
 
@@ -56,8 +61,11 @@ export default function MyScriptsPage() {
           >
             <ArrowLeft size={12} /> Voltar
           </Link>
-          <div className="rv-eyebrow">
-            <span className="rv-rec-dot" /> HISTÓRICO LOCAL · NESTE BROWSER
+          <div className="flex items-center gap-3">
+            <span className="rv-eyebrow">
+              <span className="rv-rec-dot" /> HISTÓRICO
+            </span>
+            <AuthBar />
           </div>
         </div>
       </header>

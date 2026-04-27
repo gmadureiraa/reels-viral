@@ -16,8 +16,11 @@ export default function ScriptDetailPage() {
   useEffect(() => {
     const id = params?.id;
     if (typeof id !== "string") return;
-    setEntry(getScript(id));
-    setHydrated(true);
+    void (async () => {
+      const e = await getScript(id);
+      setEntry(e);
+      setHydrated(true);
+    })();
   }, [params?.id]);
 
   if (!hydrated) {

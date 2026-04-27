@@ -53,12 +53,13 @@ export function ResultView({
   const [copied, setCopied] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
-  // Auto-save no localStorage assim que monta — user pode fechar a aba
-  // sem perder, e revisitar depois em /meus-roteiros.
+  // Auto-save assim que monta — DB se logado, localStorage anônimo.
   useEffect(() => {
     if (saved) return;
-    const entry = saveScript(data, tema ?? script.titulo);
-    if (entry) setSaved(true);
+    void (async () => {
+      const entry = await saveScript(data, tema ?? script.titulo);
+      if (entry) setSaved(true);
+    })();
     // intencionalmente sem deps — só roda no mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
