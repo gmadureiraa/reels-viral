@@ -81,9 +81,18 @@ export async function fetchInstagramPost(
   return item;
 }
 
+/** Audit P1 (Antigravity): cap pra evitar OOM em Vercel Functions
+ *  (Hobby tier tem 512MB RAM). Reel típico de IG é 8-15MB; 50MB cobre
+ *  edge cases (long form, 1080p) sem expor a download de gigabytes. */
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
+
 /**
  * Baixa o vídeo MP4 do Reel e retorna o ArrayBuffer.
  * IG CDN expira em ~24h, então sempre baixamos fresh.
+ *
+ * Rejeita vídeos > 50MB (via Content-Length header quando presente, ou
+ * checagem após download). Sem essa proteção, um vídeo malicioso de
+ * centenas de MB derrubaria a função serverless por OOM.
  */
 export async function downloadReelVideo(
   videoUrl: string
@@ -94,5 +103,29 @@ export async function downloadReelVideo(
   if (!res.ok) {
     throw new ApifyError(`Falha ao baixar vídeo: ${res.status}`, true);
   }
-  return await res.arrayBuffer();
+
+  // Pré-check via Content-Length quando disponível (IG CDN sempre envia).
+  const contentLength = res.headers.get("content-length");
+  if (contentLength) {
+    const bytes = Number(contentLength);
+    if (Number.isFinite(bytes) && bytes > MAX_VIDEO_BYTES) {
+      throw new ApifyError(
+        `Vídeo grande demais (${(bytes / 1024 / 1024).toFixed(0)}MB > ${MAX_VIDEO_BYTES / 1024 / 1024}MB). Reels de até ${MAX_VIDEO_BYTES / 1024 / 1024}MB são suportados.`,
+        false
+      );
+    }
+  }
+
+  const buffer = await res.arrayBuffer();
+
+  // Defesa em profundidade: alguns CDNs omitem Content-Length em chunked
+  // responses. Verificamos o tamanho real após download.
+  if (buffer.byteLength > MAX_VIDEO_BYTES) {
+    throw new ApifyError(
+      `Vídeo baixado ultrapassou limite (${(buffer.byteLength / 1024 / 1024).toFixed(0)}MB).`,
+      false
+    );
+  }
+
+  return buffer;
 }
