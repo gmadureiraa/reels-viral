@@ -15,10 +15,12 @@
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { fetchInstagramPost, downloadReelVideo, ApifyError } from "@/lib/apify";
+import { fetchInstagramPost, downloadReelVideo, ApifyError, type ApifyReelItem } from "@/lib/apify";
 import { adaptReelWithGemini } from "@/lib/gemini";
-import { isValidInstagramUrl } from "@/lib/utils";
+import { extractShortCode, isValidInstagramUrl } from "@/lib/utils";
 import { checkRateLimit, getClientKey } from "@/lib/rate-limit";
+import { getCachedScrape, setCachedScrape } from "@/lib/scripts-store";
+import { isDbConfigured } from "@/lib/db";
 import type { AdaptResponse, SourceMeta } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -83,8 +85,33 @@ export async function POST(req: Request) {
   const brief = parsed.data;
 
   try {
-    // 1) Scrape Apify
-    const item = await fetchInstagramPost(brief.sourceUrl);
+    // 1) Scrape Apify (com cache 24h por shortCode quando DB tá ativo).
+    //    Cache compartilhado entre users — economiza créditos Apify quando
+    //    múltiplos users adaptam o mesmo Reel viral. Custos por adapt
+    //    caem ~70% em reels populares.
+    const shortCode = extractShortCode(brief.sourceUrl);
+    let item: ApifyReelItem | null = null;
+    if (isDbConfigured() && shortCode) {
+      try {
+        const cached = (await getCachedScrape(shortCode)) as ApifyReelItem | null;
+        if (cached?.shortCode && cached?.videoUrl) {
+          item = cached;
+        }
+      } catch (err) {
+        console.warn("[adapt-reel] cache lookup failed:", err);
+      }
+    }
+    if (!item) {
+      item = await fetchInstagramPost(brief.sourceUrl);
+      // Best-effort: salva no cache pra próximos requests do mesmo shortCode.
+      if (isDbConfigured() && item.shortCode) {
+        try {
+          await setCachedScrape(item.shortCode, item);
+        } catch (err) {
+          console.warn("[adapt-reel] cache write failed:", err);
+        }
+      }
+    }
     if (item.type !== "Video" || !item.videoUrl) {
       return NextResponse.json(
         {

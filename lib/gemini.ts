@@ -4,9 +4,10 @@
  *  - roteiro novo adaptado ao tema/objetivo/CTA do user
  *  - storyboard cena por cena
  *
- * Usa file upload (até 2GB) com waiting state. Toda a geração em
- * UMA única chamada — pra economia de latência (Fulmio quica em 30s
- * baseado no demo, queremos similar).
+ * Estratégia de envio do vídeo (otimizada pra Vercel Hobby cap de 60s):
+ *  - <20MB: usa `inlineData` direto (base64). Pula upload/wait, ganha
+ *    5-15s de latência. Reels de IG quase sempre <12MB pra <2min.
+ *  - ≥20MB: usa File API com upload + polling de ACTIVE state.
  *
  * thinkingBudget=0 mantém a velocidade alta.
  */
@@ -20,6 +21,8 @@ import type {
 } from "./types";
 
 const MODEL_ID = "gemini-2.5-flash";
+/** Limite oficial do Gemini pra inlineData. Acima usa File API. */
+const INLINE_DATA_THRESHOLD = 20 * 1024 * 1024;
 
 function getClient() {
   const key = process.env.GEMINI_API_KEY;
@@ -223,7 +226,14 @@ export async function adaptReelWithGemini(
 ): Promise<AdaptResult> {
   const { fileManager, genAI } = getClient();
 
-  const fileUri = await uploadAndWait(fileManager, videoBytes);
+  // Pra arquivos <20MB usamos inlineData (base64) direto. Pula o
+  // upload+wait do File API que costumava custar 5-15s de latência.
+  // Reel típico de IG (60-90s, 720p) fica entre 8-15MB.
+  const useInline = videoBytes.byteLength < INLINE_DATA_THRESHOLD;
+  const inlineData = useInline
+    ? Buffer.from(videoBytes).toString("base64")
+    : null;
+  const fileUri = useInline ? null : await uploadAndWait(fileManager, videoBytes);
 
   const briefingBlock = `# BRIEFING DO USUÁRIO (o NOVO reel)
 
@@ -263,15 +273,21 @@ Devolva APENAS o JSON no schema fornecido. Sem prefácio, sem markdown.`;
     },
   });
 
-  const result = await model.generateContent([
-    {
-      fileData: {
-        mimeType: "video/mp4",
-        fileUri,
-      },
-    },
-    { text: briefingBlock },
-  ]);
+  const videoPart = inlineData
+    ? {
+        inlineData: {
+          mimeType: "video/mp4",
+          data: inlineData,
+        },
+      }
+    : {
+        fileData: {
+          mimeType: "video/mp4",
+          fileUri: fileUri as string,
+        },
+      };
+
+  const result = await model.generateContent([videoPart, { text: briefingBlock }]);
 
   const text = result.response.text();
   let parsed: AdaptResult;
