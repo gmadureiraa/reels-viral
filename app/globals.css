@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════════════
+   REELS VIRAL — Design System
+   ───────────────────────────────────────────────────────────────────
+   Linguagem visual: editorial cinemático + bias vertical 9:16.
+   Coral REC (#FF3D2E) = botão de gravação / ação principal.
+   Cream paper (#F5F1E8) = base, evoca celuloide / fita.
+   Ink quase-preto (#0A0908) = texto, contornos brutalistas.
+   Mono Geist Mono pra timestamps [00:12], sans Plus Jakarta pro
+   corpo, serif Instrument italic pros displays editorial.
+
+   Coerência com combo viral:
+   - Sequência Viral: cream + lime
+   - Viral Hunter:    cream + lime (twin)
+   - Reels Viral:     cream + CORAL (irmão diferente)
+   ═══════════════════════════════════════════════════════════════════ */
+
+@theme {
+  --color-rv-paper: #F5F1E8;
+  --color-rv-cream: #FBF7EE;
+  --color-rv-ink: #0A0908;
+  --color-rv-coal: #1A1816;
+  --color-rv-rec: #FF3D2E;
+  --color-rv-rec-hot: #FF5947;
+  --color-rv-muted: #6B6660;
+  --color-rv-line: #DDD7CA;
+  --color-rv-soft: #EAE3D2;
+  --color-rv-amber: #F0B33C;
+
+  --font-sans: "Plus Jakarta Sans", -apple-system, system-ui, sans-serif;
+  --font-display: "Instrument Serif", "Playfair Display", Georgia, serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html, body {
+    background: var(--color-rv-paper);
+    color: var(--color-rv-ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  *::selection {
+    background: var(--color-rv-rec);
+    color: var(--color-rv-cream);
+  }
+
+  /* Scrollbar minimalista */
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: var(--color-rv-soft); }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-rv-ink);
+    border: 2px solid var(--color-rv-soft);
+  }
+}
+
+@layer components {
+  .rv-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-rv-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .rv-eyebrow .rv-rec-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--color-rv-rec);
+    animation: rv-pulse 2s infinite;
+  }
+
+  .rv-display {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: -0.025em;
+    line-height: 0.95;
+    color: var(--color-rv-ink);
+  }
+
+  .rv-display em {
+    font-style: italic;
+    font-weight: 400;
+  }
+
+  .rv-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Botão primário — coral REC com brutalist shadow */
+  .rv-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 22px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    border: 1.5px solid var(--color-rv-ink);
+    background: var(--color-rv-cream);
+    color: var(--color-rv-ink);
+    box-shadow: 4px 4px 0 0 var(--color-rv-ink);
+    transition: transform 120ms, box-shadow 120ms;
+    cursor: pointer;
+    user-select: none;
+  }
+  .rv-btn:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--color-rv-ink);
+  }
+  .rv-btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 0 0 0 0 var(--color-rv-ink);
+  }
+  .rv-btn-rec {
+    background: var(--color-rv-rec);
+    color: var(--color-rv-cream);
+    border-color: var(--color-rv-ink);
+  }
+  .rv-btn-rec:hover {
+    background: var(--color-rv-rec-hot);
+  }
+  .rv-btn-ghost {
+    background: transparent;
+    box-shadow: none;
+  }
+  .rv-btn-ghost:hover {
+    background: var(--color-rv-soft);
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Card 9:16 — proporção de Reel */
+  .rv-card-916 {
+    aspect-ratio: 9 / 16;
+    background: var(--color-rv-cream);
+    border: 1.5px solid var(--color-rv-ink);
+    box-shadow: 5px 5px 0 0 var(--color-rv-ink);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Timecode pill */
+  .rv-timecode {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    background: var(--color-rv-ink);
+    color: var(--color-rv-cream);
+    padding: 4px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Scrubber line — usado em divisores que evocam timeline */
+  .rv-scrubber {
+    height: 1.5px;
+    background: var(--color-rv-ink);
+    position: relative;
+  }
+  .rv-scrubber::before {
+    content: "";
+    position: absolute;
+    top: -3.5px;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    background: var(--color-rv-rec);
+    border-radius: 50%;
+  }
+}
+
+@keyframes rv-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.85); }
+}
+
+@keyframes rv-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.rv-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-rv-soft) 0%,
+    var(--color-rv-cream) 50%,
+    var(--color-rv-soft) 100%
+  );
+  background-size: 200% 100%;
+  animation: rv-shimmer 1.6s ease-in-out infinite;
+}
