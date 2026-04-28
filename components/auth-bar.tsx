@@ -8,6 +8,7 @@ import {
   isAuthConfigured,
   useNeonSession,
 } from "@/lib/auth-client";
+import { migrateLocalToDb } from "@/lib/storage";
 import { AuthDialog } from "./auth-dialog";
 
 export function AuthBar() {
@@ -48,10 +49,26 @@ export function AuthBar() {
         {open && (
           <AuthDialog
             onClose={() => setOpen(false)}
-            onSuccess={() => {
+            onSuccess={async () => {
               setOpen(false);
               refresh();
               toast.success("Logado.");
+              // Migra histórico anônimo (localStorage) → DB Neon do user
+              // recém-logado. Sem isso, user perdia tudo que tinha analisado
+              // antes de criar conta. Comentário em lib/storage.ts:9 já
+              // prometia esse hook — só faltava chamar.
+              try {
+                const result = await migrateLocalToDb();
+                if (result.migrated > 0) {
+                  toast.success(
+                    `${result.migrated} ${
+                      result.migrated === 1 ? "análise migrada" : "análises migradas"
+                    } pra sua conta.`
+                  );
+                }
+              } catch (err) {
+                console.warn("[auth-bar] migrate local→db falhou:", err);
+              }
             }}
           />
         )}

@@ -22,7 +22,13 @@ const mono = Geist_Mono({
   display: "swap",
 });
 
+// metadataBase precisa estar definido pro Next gerar URLs absolutas
+// das imagens (og:image, twitter:image). Sem isso aparece warning no
+// build e clients que exigem URL absoluta (Twitter/X) ignoram o card.
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://reels.kaleidos.com.br"
+  ),
   title: "Reels Viral — Roteiros que copiam o que viraliza",
   description:
     "Cole o link de qualquer Reel viral. A IA dissecca a estrutura (hook, promessa, demo, CTA) e devolve um roteiro novo, adaptado ao seu nicho, cena por cena.",
@@ -34,6 +40,14 @@ export const metadata: Metadata = {
       "Engenharia reversa de qualquer Reel viral em 30s: estrutura desmontada + roteiro novo cena por cena.",
     type: "website",
     locale: "pt_BR",
+    siteName: "Reels Viral",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Reels Viral — Roteiros que copiam o que viraliza",
+    description:
+      "Cole um Reel. Recebe um roteiro novo cena por cena, na sua voz.",
+    creator: "@madureira",
   },
 };
 
