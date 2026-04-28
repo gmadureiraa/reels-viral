@@ -12,10 +12,13 @@ import {
 } from "@/lib/storage";
 import { formatNumber } from "@/lib/utils";
 import { AuthBar } from "@/components/auth-bar";
+import { useNeonSession, isAuthConfigured } from "@/lib/auth-client";
 
 export default function MyScriptsPage() {
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const { data: session } = useNeonSession();
+  const isLogged = isAuthConfigured() && !!session;
 
   useEffect(() => {
     void (async () => {
@@ -92,9 +95,9 @@ export default function MyScriptsPage() {
             maxWidth: 580,
           }}
         >
-          Tudo que você adaptou aqui — guardado no localStorage do browser.
-          Não persiste entre dispositivos. Quando lançarmos auth, migramos
-          tudo pra cloud.
+          {isLogged
+            ? "Tudo que você adaptou aqui — salvo na sua conta. Sincroniza entre dispositivos quando você loga no mesmo email."
+            : "Tudo que você adaptou aqui — guardado no localStorage do browser. Não persiste entre dispositivos. Cria uma conta pra sincronizar."}
         </p>
 
         {!hydrated ? (

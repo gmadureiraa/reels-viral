@@ -42,6 +42,25 @@ const BodySchema = z.object({
 export async function POST(req: Request) {
   const started = Date.now();
 
+  // Kill switch de emergência: se RV_PIPELINE_DISABLED estiver setado
+  // (qualquer truthy), retorna 503 antes de tocar Apify/Gemini. Útil
+  // quando custo dispara, key vaza, ou Gemini está em outage. User
+  // recebe mensagem clara em vez de timeout.
+  if (
+    process.env.RV_PIPELINE_DISABLED &&
+    process.env.RV_PIPELINE_DISABLED !== "0" &&
+    process.env.RV_PIPELINE_DISABLED.toLowerCase() !== "false"
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Estamos em manutenção rápida — geração de roteiros desabilitada. Volta em alguns minutos.",
+        code: "PIPELINE_DISABLED",
+      },
+      { status: 503 }
+    );
+  }
+
   // Etapa 1: detectar usuário via JWT do Neon Auth (sem forçar login).
   // Anônimos passam normalmente — apenas recebem limite mais apertado.
   const authedUser = await getOptionalUserId(req);

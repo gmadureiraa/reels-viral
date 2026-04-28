@@ -109,8 +109,15 @@ export default function Home() {
     setStep("loading");
     setResult(null);
 
+    // Timeout client-side @ 55s — o backend tem maxDuration 60s mas o
+    // pipeline pode estourar (Apify lento + File API upload + Gemini).
+    // Sem AbortController, fetch ficava pendurado até o Vercel cortar
+    // 504 às 60s e o user via toast genérico. Com timeout próprio,
+    // ganhamos 5s de margem pra fechar conexão e dar mensagem decente.
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 55_000);
+
     try {
-      // Monta headers — inclui device fingerprint pra rate limit anônimo
       const reqHeaders: Record<string, string> = {
         "Content-Type": "application/json",
       };
@@ -121,6 +128,7 @@ export default function Home() {
       const res = await fetch("/api/adapt-reel", {
         method: "POST",
         headers: reqHeaders,
+        signal: controller.signal,
         body: JSON.stringify({
           sourceUrl: sourceUrl.trim(),
           tema: tema.trim(),
@@ -138,9 +146,18 @@ export default function Home() {
       setResult(data as AdaptResponse);
       setStep("result");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      toast.error(msg);
+      const isAbort =
+        err instanceof Error &&
+        (err.name === "AbortError" || err.message.includes("aborted"));
+      const msg = isAbort
+        ? "Demorou demais (>55s). Esse Reel pode ser longo ou nossa fila tá pesada — tenta de novo em alguns segundos."
+        : err instanceof Error
+          ? err.message
+          : "Erro desconhecido";
+      toast.error(msg, { duration: isAbort ? 8000 : 4000 });
       setStep("form");
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
