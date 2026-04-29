@@ -12,8 +12,10 @@
  * thinkingBudget=0 mantém a velocidade alta.
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { GoogleAIFileManager, FileState } from "@google/generative-ai/server";
+// Migração 28/04: @google/generative-ai (deprecated) → @google/genai (SDK
+// novo unificado). Mesma capacidade de inlineData + Files API. SV já roda
+// nesse SDK em prod — paridade entre produtos do combo.
+import { GoogleGenAI } from "@google/genai";
 import type {
   AdaptBrief,
   AdaptedScript,
@@ -24,51 +26,43 @@ const MODEL_ID = "gemini-2.5-flash";
 /** Limite oficial do Gemini pra inlineData. Acima usa File API. */
 const INLINE_DATA_THRESHOLD = 20 * 1024 * 1024;
 
-function getClient() {
+function getClient(): GoogleGenAI {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY missing");
-  return {
-    fileManager: new GoogleAIFileManager(key),
-    genAI: new GoogleGenerativeAI(key),
-  };
+  return new GoogleGenAI({ apiKey: key });
 }
 
 /**
- * Faz upload do vídeo pro Gemini e espera ficar ACTIVE.
- * Retorna a URI pra usar em generateContent.
+ * Faz upload do vídeo pro Gemini Files API e espera ficar ACTIVE.
+ * Retorna a URI pra usar em generateContent. Agora via SDK novo.
  */
 async function uploadAndWait(
-  fileManager: GoogleAIFileManager,
+  ai: GoogleGenAI,
   videoBytes: ArrayBuffer
 ): Promise<string> {
-  // GoogleAIFileManager.uploadFile aceita File-like ou path string.
-  // Como temos ArrayBuffer, salvamos em /tmp pra passar path.
-  const tmpPath = `/tmp/rv-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2)}.mp4`;
-  const { writeFile, unlink } = await import("node:fs/promises");
-  await writeFile(tmpPath, Buffer.from(videoBytes));
-
-  try {
-    const upload = await fileManager.uploadFile(tmpPath, {
+  // SDK novo aceita Blob/File diretamente. Tratamos ArrayBuffer com Blob
+  // pra evitar gravar em /tmp (frágil em cold-start). Mais seguro que
+  // versão anterior que usava `node:fs/promises`.
+  const blob = new Blob([videoBytes], { type: "video/mp4" });
+  const upload = await ai.files.upload({
+    file: blob,
+    config: {
       mimeType: "video/mp4",
       displayName: `rv-${Date.now()}`,
-    });
+    },
+  });
 
-    let f = await fileManager.getFile(upload.file.name);
-    let waited = 0;
-    while (f.state === FileState.PROCESSING && waited < 60_000) {
-      await new Promise((r) => setTimeout(r, 2500));
-      waited += 2500;
-      f = await fileManager.getFile(upload.file.name);
-    }
-    if (f.state !== FileState.ACTIVE) {
-      throw new Error(`Gemini file not ACTIVE (state: ${f.state})`);
-    }
-    return upload.file.uri;
-  } finally {
-    await unlink(tmpPath).catch(() => {});
+  let f = await ai.files.get({ name: upload.name as string });
+  let waited = 0;
+  while (f.state === "PROCESSING" && waited < 60_000) {
+    await new Promise((r) => setTimeout(r, 2500));
+    waited += 2500;
+    f = await ai.files.get({ name: upload.name as string });
   }
+  if (f.state !== "ACTIVE") {
+    throw new Error(`Gemini file not ACTIVE (state: ${f.state})`);
+  }
+  return upload.uri as string;
 }
 
 const SYSTEM_INSTRUCTION = `Você é o "Adaptador Viral" — pega um Reel viral existente e gera um Reel NOVO que **REPLICA A ESTRUTURA NARRATIVA EXATA** do original mas com o conteúdo adaptado ao briefing do usuário.
@@ -250,7 +244,7 @@ export async function adaptReelWithGemini(
   brief: AdaptBrief,
   sourceCaption: string | undefined
 ): Promise<AdaptResult> {
-  const { fileManager, genAI } = getClient();
+  const ai = getClient();
 
   // Pra arquivos <20MB usamos inlineData (base64) direto. Pula o
   // upload+wait do File API que costumava custar 5-15s de latência.
@@ -259,7 +253,7 @@ export async function adaptReelWithGemini(
   const inlineData = useInline
     ? Buffer.from(videoBytes).toString("base64")
     : null;
-  const fileUri = useInline ? null : await uploadAndWait(fileManager, videoBytes);
+  const fileUri = useInline ? null : await uploadAndWait(ai, videoBytes);
 
   const briefingBlock = `# REEL DE REFERÊNCIA (anexado)
 
@@ -313,23 +307,6 @@ Outros campos:
 
 Devolva APENAS o JSON no schema fornecido. Sem prefácio, sem markdown.`;
 
-  const model = genAI.getGenerativeModel({
-    model: MODEL_ID,
-    systemInstruction: SYSTEM_INSTRUCTION,
-    generationConfig: {
-      temperature: 0.85,
-      topP: 0.95,
-      // 8192 truncava o JSON quando o storyboard tinha 8-10 cenas com
-      // visual + copy + broll detalhados (~11k chars). 16384 cobre P99.
-      // Gemini Flash suporta até 65K output, mas 16K é suficiente e
-      // mantém latência baixa.
-      maxOutputTokens: 16384,
-      responseMimeType: "application/json",
-      // @ts-expect-error — responseSchema é suportado mas tipo do SDK ainda não tem
-      responseSchema: RESPONSE_SCHEMA,
-    },
-  });
-
   const videoPart = inlineData
     ? {
         inlineData: {
@@ -344,9 +321,32 @@ Devolva APENAS o JSON no schema fornecido. Sem prefácio, sem markdown.`;
         },
       };
 
-  const result = await model.generateContent([videoPart, { text: briefingBlock }]);
+  // SDK novo: chamada via ai.models.generateContent. systemInstruction
+  // vai dentro de config. Output text vem direto em result.text (sem
+  // .response.text()).
+  const result = await ai.models.generateContent({
+    model: MODEL_ID,
+    contents: [
+      {
+        role: "user",
+        parts: [videoPart, { text: briefingBlock }],
+      },
+    ],
+    config: {
+      systemInstruction: SYSTEM_INSTRUCTION,
+      temperature: 0.85,
+      topP: 0.95,
+      // 8192 truncava o JSON quando o storyboard tinha 8-10 cenas com
+      // visual + copy + broll detalhados (~11k chars). 16384 cobre P99.
+      maxOutputTokens: 16384,
+      responseMimeType: "application/json",
+      responseSchema: RESPONSE_SCHEMA,
+      // thinkingBudget=0 mantém latência baixa.
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
 
-  const text = result.response.text();
+  const text = result.text ?? "";
   let parsed: AdaptResult;
   try {
     parsed = JSON.parse(text);

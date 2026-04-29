@@ -283,7 +283,7 @@ export default function Home() {
             style={{ maxWidth: 1180, padding: "60px 28px 100px" }}
           >
             {/* HERO */}
-            <div className="grid gap-12" style={{ gridTemplateColumns: "1.1fr 0.9fr" }}>
+            <div className="grid gap-12 grid-cols-1 md:grid-cols-[1.1fr_0.9fr]">
               <div>
                 <span className="rv-eyebrow">
                   <span className="rv-rec-dot" /> ENGENHARIA REVERSA · IA
@@ -390,10 +390,7 @@ export default function Home() {
                 </button>
               </div>
 
-              <div
-                className="mt-7 grid gap-5"
-                style={{ gridTemplateColumns: "1fr 1fr" }}
-              >
+              <div className="mt-7 grid gap-5 grid-cols-1 sm:grid-cols-2">
                 <div>
                   <label className="rv-eyebrow mb-2 block">
                     02 · O TEMA DO SEU VÍDEO
@@ -442,10 +439,7 @@ export default function Home() {
                 <label className="rv-eyebrow mb-3 block">
                   03 · OBJETIVO PRINCIPAL
                 </label>
-                <div
-                  className="grid gap-2"
-                  style={{ gridTemplateColumns: "repeat(4, 1fr)" }}
-                >
+                <div className="grid gap-2 grid-cols-2 md:grid-cols-4">
                   {OBJETIVOS.map((o) => {
                     const active = objetivo === o.id;
                     return (
@@ -482,10 +476,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div
-                className="mt-6 grid gap-5"
-                style={{ gridTemplateColumns: "1fr 1fr" }}
-              >
+              <div className="mt-6 grid gap-5 grid-cols-1 sm:grid-cols-2">
                 <div>
                   <label className="rv-eyebrow mb-2 block">
                     05 · PERSONA / PÚBLICO <span style={{ opacity: 0.6 }}>(opcional)</span>
@@ -542,10 +533,7 @@ export default function Home() {
               >
                 Três passos. <em>Trinta segundos.</em>
               </h2>
-              <div
-                className="mt-10 grid gap-6"
-                style={{ gridTemplateColumns: "repeat(3, 1fr)" }}
-              >
+              <div className="mt-10 grid gap-6 grid-cols-1 md:grid-cols-3">
                 <Step
                   n="01"
                   title="Cola o link"

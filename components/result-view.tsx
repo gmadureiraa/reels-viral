@@ -117,10 +117,8 @@ export function ResultView({
       </div>
 
       {/* HERO RESULT — fonte + estrutura */}
-      <section
-        className="grid gap-8"
-        style={{ gridTemplateColumns: "0.95fr 1.05fr" }}
-      >
+      <section className="grid gap-8 grid-cols-1 md:grid-cols-[0.95fr_1.05fr]">
+        {/* mobile-first: empilha em <md, side-by-side em >=md */}
         {/* Source card */}
         <div
           style={{
@@ -183,11 +181,8 @@ export function ResultView({
           )}
 
           <div
-            className="grid gap-3 mt-5 pt-5"
-            style={{
-              gridTemplateColumns: "repeat(2, 1fr)",
-              borderTop: "1px solid var(--color-rv-line)",
-            }}
+            className="grid gap-3 mt-5 pt-5 grid-cols-2"
+            style={{ borderTop: "1px solid var(--color-rv-line)" }}
           >
             <Stat
               icon={<Play size={11} />}
@@ -461,7 +456,7 @@ export function ResultView({
                 margin: 0,
               }}
             >
-              "{script.hook}"
+              &ldquo;{script.hook}&rdquo;
             </p>
           </div>
           <button
@@ -537,10 +532,7 @@ export function ResultView({
       </section>
 
       {/* CAPTION + NOTAS DE PRODUÇÃO */}
-      <section
-        className="grid gap-6"
-        style={{ gridTemplateColumns: "1.1fr 0.9fr" }}
-      >
+      <section className="grid gap-6 grid-cols-1 md:grid-cols-[1.1fr_0.9fr]">
         <div
           style={{
             background: "var(--color-rv-cream)",
@@ -758,10 +750,7 @@ function SceneCard({ scene }: { scene: Scene }) {
           </button>
         </div>
 
-        <div
-          className="grid gap-3"
-          style={{ gridTemplateColumns: "1fr 1fr" }}
-        >
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
           <div>
             <div
               className="rv-mono"
@@ -811,7 +800,7 @@ function SceneCard({ scene }: { scene: Scene }) {
                 fontStyle: "italic",
               }}
             >
-              "{scene.copy}"
+              &ldquo;{scene.copy}&rdquo;
             </p>
           </div>
         </div>

@@ -102,17 +102,18 @@ export async function getJwtToken(): Promise<string | null> {
  * Refresh manual via `refresh()` depois de sign-in/sign-out.
  */
 export function useNeonSession(): SessionState & { refresh: () => void } {
+  // Audit fix react-hooks/set-state-in-effect: estado inicial respeita
+  // se auth está configurado. Se não estiver, isPending arranca em
+  // false direto — evita setState dentro do useEffect.
+  const initialPending = isAuthConfigured();
   const [state, setState] = useState<SessionState>({
     data: null,
-    isPending: true,
+    isPending: initialPending,
   });
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    if (!isAuthConfigured()) {
-      setState({ data: null, isPending: false });
-      return;
-    }
+    if (!isAuthConfigured()) return;
     let cancel = false;
     void (async () => {
       try {
