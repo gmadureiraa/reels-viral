@@ -99,4 +99,7 @@ export interface AdaptResponse {
   script: AdaptedScript;
   /** Tempo total da geração em ms. */
   durationMs: number;
+  /** ID do script persistido (DB ou local) — usado pelo /api/lead pra
+   *  vincular o lead ao roteiro gerado. Opcional pra anônimos. */
+  scriptId?: string | null;
 }

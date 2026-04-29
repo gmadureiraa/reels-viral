@@ -18,6 +18,7 @@ import {
 import { isValidInstagramUrl } from "@/lib/utils";
 import type { AdaptBrief, AdaptResponse } from "@/lib/types";
 import { ResultView } from "@/components/result-view";
+import { UnlockGate } from "@/components/unlock-gate";
 import { LoadingPipeline } from "@/components/loading-pipeline";
 import { AuthBar } from "@/components/auth-bar";
 
@@ -576,7 +577,15 @@ export default function Home() {
             className="mx-auto"
             style={{ maxWidth: 1280, padding: "40px 28px 100px" }}
           >
-            <ResultView data={result} tema={tema} onReset={handleReset} />
+            <UnlockGate
+              data={result}
+              tema={tema}
+              objetivo={objetivo}
+              sourceUrl={sourceUrl}
+              scriptId={result.scriptId ?? null}
+            >
+              <ResultView data={result} tema={tema} onReset={handleReset} />
+            </UnlockGate>
           </motion.section>
         )}
       </AnimatePresence>

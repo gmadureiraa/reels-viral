@@ -63,6 +63,55 @@ async function main() {
   `);
   console.log("[migrate] ✓ scrape_cache");
 
+  // Leads — capturados quando user submete email+telefone no gate de
+  // unlock do roteiro. Email é unique pra evitar duplicate. Tags vem
+  // serializadas em JSONB pra flexibilidade (objetivo, tema, etc).
+  // Sincronizado com Resend audience pelo /api/lead.
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS leads (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      email TEXT NOT NULL,
+      phone TEXT,
+      first_script_id UUID REFERENCES scripts(id) ON DELETE SET NULL,
+      source_url TEXT,
+      objetivo TEXT,
+      tema TEXT,
+      tags JSONB,
+      resend_contact_id TEXT,
+      consent_marketing BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (email)
+    );
+  `);
+  console.log("[migrate] ✓ leads");
+
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS leads_created_idx
+    ON leads (created_at DESC);
+  `);
+  console.log("[migrate] ✓ leads_created_idx");
+
+  // Tracking de envios da automação. Cada coluna marca timestamp do
+  // envio bem-sucedido. NULL = ainda não enviado. Cron lê isso pra
+  // decidir o que mandar pra cada lead a cada dia.
+  // Posted feedback: yes/no/null — vem do click no link do checkin.
+  // Neon serverless não aceita múltiplos statements em uma query, então
+  // ALTER por coluna.
+  const automationCols = [
+    "welcome_sent_at TIMESTAMPTZ",
+    "checkin_sent_at TIMESTAMPTZ",
+    "case_study_sent_at TIMESTAMPTZ",
+    "offer_sent_at TIMESTAMPTZ",
+    "reengagement_sent_at TIMESTAMPTZ",
+    "posted_feedback TEXT",
+    "converted_at TIMESTAMPTZ",
+  ];
+  for (const col of automationCols) {
+    await sql.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS ${col}`);
+  }
+  console.log("[migrate] ✓ leads automation tracking columns");
+
   // Sanity: lista as tabelas criadas no schema public.
   const rows = await sql.query(`
     SELECT table_name FROM information_schema.tables

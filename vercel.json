@@ -4,6 +4,13 @@
   "functions": {
     "app/api/adapt-reel/route.ts": { "maxDuration": 60 },
     "app/api/scripts/route.ts": { "maxDuration": 10 },
-    "app/api/scripts/[id]/route.ts": { "maxDuration": 10 }
-  }
+    "app/api/scripts/[id]/route.ts": { "maxDuration": 10 },
+    "app/api/lead/route.ts": { "maxDuration": 15 },
+    "app/api/lead/feedback/route.ts": { "maxDuration": 5 },
+    "app/api/unsubscribe/route.ts": { "maxDuration": 5 },
+    "app/api/cron/lead-automation/route.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/cron/lead-automation", "schedule": "0 13 * * *" }
+  ]
 }
