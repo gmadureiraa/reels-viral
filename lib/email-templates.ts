@@ -18,7 +18,11 @@ const CREAM = "#F5F1E8";
 const INK = "#1A1A1A";
 const MUTED = "#7A7A7A";
 
-const FROM_DEFAULT = "Reels Viral <reels@kaleidos.com.br>";
+// Domínio verificado no Resend (29/04). `news.kaleidos.com.br` está em
+// sa-east-1 com SPF+DKIM ok. `kaleidos.com.br` raiz NÃO está verificado
+// — não dá pra mandar de reels@kaleidos.com.br sem antes adicionar DNS
+// records. Pra ficar 100% no free plan, mando do subdomínio verificado.
+const FROM_DEFAULT = "Reels Viral <reels@news.kaleidos.com.br>";
 
 interface BaseProps {
   firstName?: string | null;
