@@ -6,18 +6,7 @@ import { toast } from "sonner";
 import type { AdaptResponse } from "@/lib/types";
 
 const STORAGE_KEY = "rv:unlocked-emails";
-
-/**
- * Gate de email+telefone que envolve o ResultView.
- *
- * Como funciona:
- *  - Mostra preview blurred do roteiro (hook visível, resto borrado)
- *  - Form pede email + telefone obrigatórios
- *  - Submit chama POST /api/lead com contexto (scriptId, sourceUrl, tema, objetivo)
- *  - Em sucesso: marca email no localStorage (rv:unlocked-emails)
- *    e libera children. Próxima geração com mesmo email pula gate.
- *  - Acessibility: form tem labels, errors visíveis, focus management.
- */
+const UNLOCK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 interface UnlockGateProps {
   data: AdaptResponse;
@@ -28,24 +17,37 @@ interface UnlockGateProps {
   children: React.ReactNode;
 }
 
-function readUnlockedEmails(): Set<string> {
-  if (typeof window === "undefined") return new Set();
+type UnlockEntry = { email: string; expiresAt: number };
+
+function readUnlockedEmails(): UnlockEntry[] {
+  if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw) as string[];
-    return new Set(Array.isArray(arr) ? arr.map((e) => e.toLowerCase()) : []);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === "string") {
+      // Migração do formato antigo (string[]) — atribui TTL a partir de agora.
+      return (parsed as string[]).map((email) => ({
+        email: email.toLowerCase(),
+        expiresAt: now + UNLOCK_TTL_MS,
+      }));
+    }
+    if (!Array.isArray(parsed)) return [];
+    return (parsed as UnlockEntry[]).filter(
+      (e) => e && typeof e.email === "string" && typeof e.expiresAt === "number" && e.expiresAt > now,
+    );
   } catch {
-    return new Set();
+    return [];
   }
 }
 
 function persistUnlockedEmail(email: string) {
   if (typeof window === "undefined") return;
   try {
-    const cur = readUnlockedEmails();
-    cur.add(email.toLowerCase());
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(cur)));
+    const cur = readUnlockedEmails().filter((e) => e.email !== email.toLowerCase());
+    cur.push({ email: email.toLowerCase(), expiresAt: Date.now() + UNLOCK_TTL_MS });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cur));
   } catch {
     /* ignore */
   }
@@ -58,12 +60,25 @@ export function UnlockGate(props: UnlockGateProps) {
   const [submitting, setSubmitting] = useState(false);
   const [touched, setTouched] = useState(false);
 
-  // Hidrata: se localStorage tem ANY email, libera. UX simples — não
-  // exige que seja exatamente o email do user atual (1 unlock = vale
-  // pra próximas geraçoes nesse browser).
   useEffect(() => {
-    const set = readUnlockedEmails();
-    if (set.size > 0) setUnlocked(true);
+    const entries = readUnlockedEmails();
+    if (entries.length > 0) {
+      // setUnlocked dentro de useEffect é intencional pra evitar hydration
+      // mismatch (SSR não enxerga localStorage).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setUnlocked(true);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      } catch {
+        /* ignore */
+      }
+    } else {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
   const emailValid = useMemo(
