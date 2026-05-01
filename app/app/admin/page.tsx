@@ -444,9 +444,18 @@ function UsersTab({ stats }: { stats: AdminStats }) {
           {stats.users.map((u) => (
             <tr key={u.user_id}>
               <Td>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
-                  {u.user_id.slice(0, 8)}…{u.user_id.slice(-4)}
-                </span>
+                <Link
+                  href={`/app/admin/users/${u.user_id}`}
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    color: "var(--color-rv-rec)",
+                    textDecoration: "none",
+                    fontWeight: 600,
+                  }}
+                >
+                  {u.user_id.slice(0, 8)}…{u.user_id.slice(-4)} →
+                </Link>
               </Td>
               <Td>
                 <PlanBadge plan={u.plan} status={u.status} />

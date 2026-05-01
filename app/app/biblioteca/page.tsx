@@ -1,17 +1,20 @@
 "use client";
 
 /**
- * /biblioteca — galeria de reels virais estilo Instagram.
+ * /app/biblioteca — galeria de reels virais estilo Instagram.
  *
  * Free user: tudo borrado + watermark "Pro" + CTA pra assinar.
- * Paid user: liberado + filtros por template_type.
+ * Paid user: liberado + filtros (template + search por handle/caption) +
+ * click num reel abre detalhe com botão "Adaptar este reel" (preenche
+ * pendingBrief no sessionStorage + redirect /app).
  *
  * Quando biblioteca tá vazia (pré-seed Apify), mostra placeholders
  * borrados gerados client-side pra hint visual do que vem.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Heart,
@@ -20,9 +23,13 @@ import {
   Play,
   Eye,
   Loader2,
+  Search,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import { useNeonSession, getJwtToken } from "@/lib/auth-client";
-import { AuthBar } from "@/components/auth-bar";
+
+const PENDING_FORM_KEY = "rv_pending_brief";
 
 interface LibraryReel {
   id: string;
@@ -70,11 +77,49 @@ const PLACEHOLDER_REELS: LibraryReel[] = Array.from({ length: 12 }, (_, i) => ({
 }));
 
 export default function LibraryPage() {
-  useNeonSession(); // hydrate session pra AuthBar mostrar estado correto
+  const router = useRouter();
+  useNeonSession();
   const [reels, setReels] = useState<LibraryReel[]>([]);
   const [unlocked, setUnlocked] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [selectedReel, setSelectedReel] = useState<LibraryReel | null>(null);
+
+  // Filtra client-side por search query (handle, caption, hook).
+  const filteredReels = useMemo(() => {
+    if (!search.trim()) return reels;
+    const q = search.toLowerCase();
+    return reels.filter((r) => {
+      const fields = [
+        r.author_handle ?? "",
+        r.caption ?? "",
+        r.hook_pattern ?? "",
+        r.template_type ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return fields.includes(q);
+    });
+  }, [reels, search]);
+
+  function handleAdaptReel(reel: LibraryReel) {
+    if (!reel.ig_url) return;
+    try {
+      sessionStorage.setItem(
+        PENDING_FORM_KEY,
+        JSON.stringify({
+          sourceUrl: reel.ig_url,
+          tema: "",
+          objetivo: "seguidores",
+          cta: "",
+        }),
+      );
+    } catch {
+      /* sessionStorage bloqueado */
+    }
+    router.push("/app");
+  }
 
   useEffect(() => {
     setLoading(true);
@@ -115,41 +160,7 @@ export default function LibraryPage() {
         color: "var(--color-rv-ink)",
       }}
     >
-      <header
-        style={{
-          padding: "18px 28px",
-          borderBottom: "1.5px solid var(--color-rv-ink)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 14,
-          flexWrap: "wrap",
-        }}
-      >
-        <Link
-          href="/app"
-          className="rv-mono"
-          style={{
-            fontSize: 11,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            textDecoration: "none",
-            color: "var(--color-rv-ink)",
-          }}
-        >
-          <ArrowLeft size={14} />
-          Voltar
-        </Link>
-        <div className="rv-eyebrow">
-          <span className="rv-rec-dot" /> BIBLIOTECA · REELS VIRAIS
-        </div>
-        <AuthBar />
-      </header>
-
+      {/* Header simplificado — sidebar do /app/layout cuida da navegação */}
       <section style={{ maxWidth: 1200, margin: "0 auto", padding: "32px 24px 80px" }}>
         <div style={{ marginBottom: 20 }}>
           <h1
@@ -164,6 +175,59 @@ export default function LibraryPage() {
             em segundos.
           </p>
         </div>
+
+        {/* Search input */}
+        {unlocked && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0,
+              marginBottom: 16,
+              border: "1.5px solid var(--color-rv-ink)",
+              background: "white",
+              maxWidth: 460,
+            }}
+          >
+            <Search
+              size={14}
+              style={{ marginLeft: 14, color: "var(--color-rv-muted)" }}
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Busca por handle, caption ou hook…"
+              spellCheck={false}
+              style={{
+                flex: 1,
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                padding: "10px 12px",
+                fontFamily: "var(--font-jakarta), sans-serif",
+                fontSize: 13,
+                color: "var(--color-rv-ink)",
+              }}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Limpar busca"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: "8px 12px",
+                  cursor: "pointer",
+                  color: "var(--color-rv-muted)",
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Filtros */}
         <div
@@ -230,8 +294,13 @@ export default function LibraryPage() {
                 transition: "filter 0.3s ease",
               }}
             >
-              {reels.map((reel) => (
-                <ReelCard key={reel.id} reel={reel} unlocked={unlocked} />
+              {filteredReels.map((reel) => (
+                <ReelCard
+                  key={reel.id}
+                  reel={reel}
+                  unlocked={unlocked}
+                  onClick={() => setSelectedReel(reel)}
+                />
               ))}
             </div>
 
@@ -318,11 +387,31 @@ export default function LibraryPage() {
           </div>
         )}
       </section>
+
+      {/* Modal detalhe do reel — abre ao clicar num card */}
+      {selectedReel && (
+        <ReelDetailModal
+          reel={selectedReel}
+          onClose={() => setSelectedReel(null)}
+          onAdapt={() => {
+            handleAdaptReel(selectedReel);
+            setSelectedReel(null);
+          }}
+        />
+      )}
     </main>
   );
 }
 
-function ReelCard({ reel, unlocked }: { reel: LibraryReel; unlocked: boolean }) {
+function ReelCard({
+  reel,
+  unlocked,
+  onClick,
+}: {
+  reel: LibraryReel;
+  unlocked: boolean;
+  onClick: () => void;
+}) {
   const fmt = (n: number | null): string => {
     if (n == null) return "—";
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -447,22 +536,31 @@ function ReelCard({ reel, unlocked }: { reel: LibraryReel; unlocked: boolean }) 
 
   if (unlocked && reel.ig_url) {
     return (
-      <a
-        href={reel.ig_url}
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        onClick={onClick}
         style={{
           display: "block",
+          width: "100%",
+          padding: 0,
           border: "1.5px solid var(--color-rv-ink)",
           background: "var(--color-rv-cream)",
-          textDecoration: "none",
           color: "inherit",
-          transition: "transform 0.15s ease",
+          cursor: "pointer",
+          textAlign: "left",
+          transition: "transform 0.15s ease, box-shadow 0.15s ease",
         }}
-        className="hover:-translate-y-0.5"
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = "translate(-2px, -2px)";
+          e.currentTarget.style.boxShadow = "4px 4px 0 0 var(--color-rv-ink)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = "translate(0, 0)";
+          e.currentTarget.style.boxShadow = "none";
+        }}
       >
         {cardContent}
-      </a>
+      </button>
     );
   }
   return (
@@ -473,6 +571,245 @@ function ReelCard({ reel, unlocked }: { reel: LibraryReel; unlocked: boolean }) 
       }}
     >
       {cardContent}
+    </div>
+  );
+}
+
+// ─── Modal detalhe do reel ────────────────────────────────────────────
+
+function ReelDetailModal({
+  reel,
+  onClose,
+  onAdapt,
+}: {
+  reel: LibraryReel;
+  onClose: () => void;
+  onAdapt: () => void;
+}) {
+  const fmt = (n: number | null): string => {
+    if (n == null) return "—";
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+    return String(n);
+  };
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(10, 9, 8, 0.6)",
+        backdropFilter: "blur(4px)",
+        zIndex: 60,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "100%",
+          maxWidth: 720,
+          background: "var(--color-rv-cream)",
+          border: "1.5px solid var(--color-rv-ink)",
+          boxShadow: "10px 10px 0 0 var(--color-rv-rec)",
+          padding: 0,
+          position: "relative",
+          maxHeight: "92vh",
+          overflowY: "auto",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar"
+          style={{
+            position: "absolute",
+            top: 14,
+            right: 14,
+            background: "white",
+            border: "1.5px solid var(--color-rv-line)",
+            padding: 6,
+            cursor: "pointer",
+            zIndex: 1,
+          }}
+        >
+          <X size={14} />
+        </button>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 0 }}>
+          {/* Thumb / preview */}
+          <div
+            style={{
+              aspectRatio: "9 / 16",
+              maxHeight: 360,
+              background: reel.thumb_url
+                ? `url(${reel.thumb_url}) center/cover`
+                : "linear-gradient(135deg, #2a1a14, #4a2a1f, #1a1a1a)",
+              position: "relative",
+              borderBottom: "1.5px solid var(--color-rv-ink)",
+            }}
+          >
+            <div
+              style={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                background: "rgba(0,0,0,0.55)",
+                borderRadius: "50%",
+                width: 64,
+                height: 64,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Play size={28} color="white" fill="white" />
+            </div>
+          </div>
+
+          <div style={{ padding: "24px 28px 26px" }}>
+            <div className="rv-eyebrow" style={{ marginBottom: 8 }}>
+              <span className="rv-rec-dot" />
+              {reel.template_type?.replace(/_/g, " ").toUpperCase() ?? "REEL VIRAL"}
+            </div>
+            <h2
+              className="rv-display"
+              style={{ fontSize: 26, lineHeight: 1.1, marginBottom: 14 }}
+            >
+              {reel.author_handle ?? "@viral_creator"}
+            </h2>
+
+            {/* Metricas */}
+            <div
+              style={{
+                display: "flex",
+                gap: 18,
+                marginBottom: 18,
+                flexWrap: "wrap",
+                fontSize: 13,
+                color: "var(--color-rv-muted)",
+              }}
+            >
+              <span>
+                <Heart size={12} style={{ display: "inline", marginRight: 4 }} />
+                <strong style={{ color: "var(--color-rv-ink)" }}>
+                  {fmt(reel.likes_count)}
+                </strong>{" "}
+                likes
+              </span>
+              {reel.views_count != null && (
+                <span>
+                  <Eye size={12} style={{ display: "inline", marginRight: 4 }} />
+                  <strong style={{ color: "var(--color-rv-ink)" }}>
+                    {fmt(reel.views_count)}
+                  </strong>{" "}
+                  views
+                </span>
+              )}
+              {reel.duration_seconds != null && (
+                <span>
+                  <strong style={{ color: "var(--color-rv-ink)" }}>
+                    {reel.duration_seconds}s
+                  </strong>{" "}
+                  duração
+                </span>
+              )}
+            </div>
+
+            {/* Hook pattern */}
+            {reel.hook_pattern && (
+              <div
+                style={{
+                  background: "var(--color-rv-soft)",
+                  border: "1px solid var(--color-rv-line)",
+                  borderLeft: "3px solid var(--color-rv-rec)",
+                  padding: "10px 14px",
+                  marginBottom: 16,
+                }}
+              >
+                <div
+                  className="rv-mono"
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                    color: "var(--color-rv-muted)",
+                    marginBottom: 4,
+                  }}
+                >
+                  Hook
+                </div>
+                <p style={{ fontSize: 13, lineHeight: 1.45, color: "var(--color-rv-ink)" }}>
+                  &ldquo;{reel.hook_pattern}&rdquo;
+                </p>
+              </div>
+            )}
+
+            {/* Caption preview (truncada) */}
+            {reel.caption && (
+              <p
+                style={{
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  color: "var(--color-rv-muted)",
+                  marginBottom: 22,
+                  whiteSpace: "pre-line",
+                }}
+              >
+                {reel.caption.length > 280
+                  ? `${reel.caption.slice(0, 280)}…`
+                  : reel.caption}
+              </p>
+            )}
+
+            {/* Ações */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={onAdapt}
+                className="rv-btn rv-btn-rec"
+                style={{
+                  flex: "1 1 240px",
+                  padding: "13px 16px",
+                  fontSize: 11,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Sparkles size={13} />
+                Adaptar este reel
+              </button>
+              {reel.ig_url && (
+                <a
+                  href={reel.ig_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rv-btn rv-btn-ghost"
+                  style={{
+                    padding: "13px 16px",
+                    fontSize: 11,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    textDecoration: "none",
+                  }}
+                >
+                  <ExternalLink size={12} />
+                  Ver no Instagram
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,7 @@ function getSql() {
 export interface UserSubscription {
   userId: string;
   plan: PlanId;
-  status: "active" | "past_due" | "canceled" | "incomplete";
+  status: "active" | "past_due" | "canceled" | "incomplete" | "banned";
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   currentPeriodStart: string | null;
@@ -66,7 +66,8 @@ export async function getUserSubscription(
     };
   }
   const row = rows[0];
-  // Se status não for 'active', degrada pro free silencioso
+  // Se status não for 'active', degrada pro free silencioso (paywall puxa
+  // limite free). Banned mantém o status real pra getQuotaStatus bloquear.
   const isActive = row.status === "active";
   return {
     userId: row.user_id,
@@ -109,13 +110,16 @@ export interface QuotaStatus {
 /**
  * Resumo da quota: usado + limite + se está bloqueado pra criar mais.
  * Usado na UI (mostra "X/Y reels usados") e no middleware do POST.
+ *
+ * Banned users são bloqueados independente da quota (limit=0).
  */
 export async function getQuotaStatus(userId: string): Promise<QuotaStatus> {
   const sub = await getUserSubscription(userId);
   const used = await countReelsThisMonth(userId);
-  const limit = getReelsLimit(sub.plan);
+  const isBanned = sub.status === "banned";
+  const limit = isBanned ? 0 : getReelsLimit(sub.plan);
   const remaining = Math.max(0, limit - used);
-  const blocked = used >= limit;
+  const blocked = isBanned || used >= limit;
 
   // Próximo reset = 1º dia do próximo mês 00:00 UTC.
   const now = new Date();
