@@ -227,6 +227,20 @@ async function main() {
   `);
   console.log("[migrate] ✓ ai_usage indexes");
 
+  // Tabela de eventos do webhook Stripe — idempotência.
+  // Stripe retransmite em flapping de rede; sem dedup os handlers rodam 2x
+  // (notificação duplicada, métrica inflada). Insert ON CONFLICT serve de
+  // mutex distribuído por event.id.
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      app TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  console.log("[migrate] ✓ stripe_webhook_events");
+
   // Sanity: lista as tabelas criadas no schema public.
   const rows = await sql.query(`
     SELECT table_name FROM information_schema.tables

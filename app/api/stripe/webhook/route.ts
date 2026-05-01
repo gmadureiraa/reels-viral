@@ -54,6 +54,27 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  // Idempotência: registra event.id e descarta se Stripe retransmitir.
+  // INSERT ... ON CONFLICT DO NOTHING + RETURNING garante atomicidade.
+  // Requer migration que cria stripe_webhook_events (id text PK, type text,
+  // app text, created_at timestamptz default now()).
+  try {
+    const inserted = (await getSql()`
+      INSERT INTO stripe_webhook_events (id, type, app)
+      VALUES (${event.id}, ${event.type}, ${STRIPE_APP_TAG})
+      ON CONFLICT (id) DO NOTHING
+      RETURNING id
+    `) as Array<{ id: string }>;
+    if (!inserted || inserted.length === 0) {
+      // Já processado anteriormente — ack e sai.
+      return NextResponse.json({ received: true, dedup: true });
+    }
+  } catch (err) {
+    // Tabela pode não existir ainda (migration pendente) — não bloqueia
+    // produção, mas avisa. Idempotência fica best-effort.
+    console.warn("[webhook] dedup table miss:", err);
+  }
+
   try {
     switch (event.type) {
       case "checkout.session.completed":
@@ -71,11 +92,15 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ received: true });
   } catch (err) {
+    // Retorna 500 pra Stripe retentar — handler error em
+    // checkout/subscription.* significa que o estado do user no DB pode
+    // estar inconsistente. Stripe faz retry exponencial até 3 dias, dando
+    // janela pra recuperar de falhas transitórias de Neon/Resend.
     console.error("[webhook] handler error:", err, "event:", event.type);
-    // Retorna 200 mesmo em erro pra Stripe não retentar infinitamente —
-    // erros internos são logados e investigados manualmente. Bug crítico
-    // só seria se stripe-signature falhar (já tratado acima).
-    return NextResponse.json({ received: true, warning: "handler failed" });
+    return NextResponse.json(
+      { error: "handler failed", eventId: event.id },
+      { status: 500 },
+    );
   }
 }
 

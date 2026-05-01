@@ -15,7 +15,7 @@ import Link from "next/link";
 import { Check, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { PLANS_RV, type PlanId } from "@/lib/pricing";
-import { useNeonSession } from "@/lib/auth-client";
+import { useNeonSession, getJwtToken } from "@/lib/auth-client";
 import { AuthDialog } from "@/components/auth-dialog";
 
 type PaidPlanId = Exclude<PlanId, "free">;
@@ -35,9 +35,14 @@ export default function PricingPage() {
     }
     setLoadingPlan(planId);
     try {
+      const jwt = await getJwtToken();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ planId }),
       });
       const data = await res.json();

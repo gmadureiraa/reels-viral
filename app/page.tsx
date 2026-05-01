@@ -23,7 +23,7 @@ import { LoadingPipeline } from "@/components/loading-pipeline";
 import { AuthBar } from "@/components/auth-bar";
 import { AuthDialog } from "@/components/auth-dialog";
 import { QuotaBlockedModal } from "@/components/quota-blocked-modal";
-import { useNeonSession } from "@/lib/auth-client";
+import { useNeonSession, getJwtToken } from "@/lib/auth-client";
 import { isAdminEmail } from "@/lib/admin-emails";
 
 const OBJETIVOS: Array<{
@@ -178,6 +178,10 @@ export default function Home() {
       if (deviceIdRef.current) {
         reqHeaders["X-Device-Id"] = deviceIdRef.current;
       }
+      // Manda JWT pro server saber o user real — sem isso a quota e o
+      // rate-limit caem no trilho anônimo (paywall bypassado).
+      const jwt = await getJwtToken();
+      if (jwt) reqHeaders["Authorization"] = `Bearer ${jwt}`;
 
       const res = await fetch("/api/adapt-reel", {
         method: "POST",

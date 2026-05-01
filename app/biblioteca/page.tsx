@@ -21,7 +21,7 @@ import {
   Eye,
   Loader2,
 } from "lucide-react";
-import { useNeonSession } from "@/lib/auth-client";
+import { useNeonSession, getJwtToken } from "@/lib/auth-client";
 import { AuthBar } from "@/components/auth-bar";
 
 interface LibraryReel {
@@ -80,17 +80,31 @@ export default function LibraryPage() {
     setLoading(true);
     const params = new URLSearchParams();
     if (filter !== "all") params.set("template", filter);
-    fetch(`/api/library?${params.toString()}`)
-      .then((r) => r.json() as Promise<ApiResponse>)
-      .then((data) => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // JWT necessário pra /api/library reconhecer plano Basic/Max e
+        // liberar a biblioteca destravada (sem token, cai em getOptionalUserId
+        // → null → biblioteca borrada mesmo pra usuário pagante).
+        const jwt = await getJwtToken();
+        const res = await fetch(`/api/library?${params.toString()}`, {
+          headers: jwt ? { Authorization: `Bearer ${jwt}` } : undefined,
+        });
+        const data = (await res.json()) as ApiResponse;
+        if (cancelled) return;
         setReels(data.reels.length > 0 ? data.reels : PLACEHOLDER_REELS);
         setUnlocked(Boolean(data.unlocked));
-      })
-      .catch(() => {
+      } catch {
+        if (cancelled) return;
         setReels(PLACEHOLDER_REELS);
         setUnlocked(false);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [filter]);
 
   return (
