@@ -127,7 +127,7 @@ export default function LibraryPage() {
         }}
       >
         <Link
-          href="/"
+          href="/app"
           className="rv-mono"
           style={{
             fontSize: 11,
@@ -296,7 +296,7 @@ export default function LibraryPage() {
                     (R$ 14,90/mês).
                   </p>
                   <Link
-                    href="/precos"
+                    href="/app/precos"
                     className="rv-btn rv-btn-rec"
                     style={{
                       width: "100%",

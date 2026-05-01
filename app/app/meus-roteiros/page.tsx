@@ -58,7 +58,7 @@ export default function MyScriptsPage() {
           style={{ maxWidth: 1280, padding: "18px 28px" }}
         >
           <Link
-            href="/"
+            href="/app"
             className="rv-btn rv-btn-ghost"
             style={{ padding: "8px 14px", fontSize: 10 }}
           >
@@ -141,7 +141,7 @@ export default function MyScriptsPage() {
             >
               Cola um link de Reel viral e adapta. Os roteiros salvam aqui automaticamente.
             </p>
-            <Link href="/" className="rv-btn rv-btn-rec">
+            <Link href="/app" className="rv-btn rv-btn-rec">
               Adaptar primeiro reel →
             </Link>
           </div>

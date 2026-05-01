@@ -71,7 +71,7 @@ export default function PricingPage() {
         }}
       >
         <Link
-          href="/"
+          href="/app"
           className="rv-mono"
           style={{
             fontSize: 11,

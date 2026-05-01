@@ -56,7 +56,7 @@ export default function ScriptDetailPage() {
           >
             Talvez tenha sido apagado, ou está em outro browser. O histórico fica salvo localmente nesse dispositivo.
           </p>
-          <Link href="/meus-roteiros" className="rv-btn">
+          <Link href="/app/meus-roteiros" className="rv-btn">
             <ArrowLeft size={12} /> Voltar pro histórico
           </Link>
         </div>
@@ -77,7 +77,7 @@ export default function ScriptDetailPage() {
           style={{ maxWidth: 1280, padding: "18px 28px" }}
         >
           <Link
-            href="/meus-roteiros"
+            href="/app/meus-roteiros"
             className="rv-btn rv-btn-ghost"
             style={{ padding: "8px 14px", fontSize: 10 }}
           >

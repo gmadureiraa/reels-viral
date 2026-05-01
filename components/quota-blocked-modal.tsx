@@ -125,7 +125,7 @@ export function QuotaBlockedModal({
         </div>
 
         <Link
-          href="/precos"
+          href="/app/precos"
           className="rv-btn rv-btn-rec"
           style={{
             width: "100%",

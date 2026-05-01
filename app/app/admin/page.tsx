@@ -162,7 +162,7 @@ export default function AdminPage() {
           <p style={{ color: "var(--color-rv-muted)", fontSize: 14 }}>
             Esse painel é só pra admin.
           </p>
-          <Link href="/" className="rv-btn rv-btn-ghost" style={{ padding: "10px 16px" }}>
+          <Link href="/app" className="rv-btn rv-btn-ghost" style={{ padding: "10px 16px" }}>
             <ArrowLeft size={12} /> Voltar
           </Link>
         </div>
@@ -185,7 +185,7 @@ export default function AdminPage() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           <Link
-            href="/"
+            href="/app"
             className="rv-mono"
             style={{
               fontSize: 11,
