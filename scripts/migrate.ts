@@ -112,6 +112,77 @@ async function main() {
   }
   console.log("[migrate] ✓ leads automation tracking columns");
 
+  // ────────────────────────────────────────────────────────────────────
+  // Subscriptions (Fase 2 — paywall + Stripe, 2026-05-01)
+  // ────────────────────────────────────────────────────────────────────
+  // Uma row por user. plan = 'free' | 'basic' | 'max'. Free é o default
+  // implícito (user sem row = free). Basic/Max criados via webhook
+  // checkout.session.completed do Stripe.
+  // status: 'active' | 'past_due' | 'canceled' | 'incomplete'. Só
+  // 'active' libera features; resto cai pra free.
+  // current_period_end: usado pra detectar fim do ciclo (renovação ou
+  // downgrade pra free). Usado também pelo cron de retention emails.
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS user_subscriptions (
+      user_id TEXT PRIMARY KEY,
+      plan TEXT NOT NULL DEFAULT 'free',
+      status TEXT NOT NULL DEFAULT 'active',
+      stripe_customer_id TEXT,
+      stripe_subscription_id TEXT UNIQUE,
+      stripe_price_id TEXT,
+      current_period_start TIMESTAMPTZ,
+      current_period_end TIMESTAMPTZ,
+      cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  console.log("[migrate] ✓ user_subscriptions");
+
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS user_subs_stripe_customer_idx
+    ON user_subscriptions (stripe_customer_id);
+  `);
+  console.log("[migrate] ✓ user_subs_stripe_customer_idx");
+
+  // ────────────────────────────────────────────────────────────────────
+  // Library reels (Fase 3 — biblioteca de reels virais)
+  // ────────────────────────────────────────────────────────────────────
+  // Curadoria manual + scraping Apify. Each row = um reel viral indexado.
+  // template_type: 'hook_face_cam' | 'transition' | 'duet' | 'pov' | etc
+  // (taxonomia evolui conforme curamos). thumb_url cacheada no Neon
+  // pra evitar IG CDN 403 (mesmo padrão SV: baixar sem headers, salvar).
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS library_reels (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      ig_url TEXT NOT NULL UNIQUE,
+      short_code TEXT,
+      author_handle TEXT,
+      caption TEXT,
+      thumb_url TEXT,
+      likes_count INTEGER,
+      views_count INTEGER,
+      duration_seconds INTEGER,
+      template_type TEXT,
+      hook_pattern TEXT,
+      tags JSONB,
+      featured BOOLEAN NOT NULL DEFAULT FALSE,
+      added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      scraped_at TIMESTAMPTZ
+    );
+  `);
+  console.log("[migrate] ✓ library_reels");
+
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS library_reels_template_idx
+    ON library_reels (template_type, likes_count DESC);
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS library_reels_featured_idx
+    ON library_reels (featured DESC, likes_count DESC);
+  `);
+  console.log("[migrate] ✓ library_reels indexes");
+
   // Sanity: lista as tabelas criadas no schema public.
   const rows = await sql.query(`
     SELECT table_name FROM information_schema.tables

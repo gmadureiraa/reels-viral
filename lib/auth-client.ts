@@ -6,6 +6,10 @@
  * Visitantes da landing nunca pagam esse overhead.
  *
  * Pattern espelha viral-hunter/src/lib/auth-client.ts.
+ *
+ * 2026-05-01 — bump pra 0.3.0-beta + getJwtToken via getSession() (o
+ * proxy do Better Auth converte client.getJWTToken() em POST /get-j-w-t-token
+ * 404). Ver memo radar P0 hotfix 30/04.
  */
 
 "use client";
@@ -33,12 +37,18 @@ interface SignInResult {
   error?: { message?: string } | null;
 }
 
+interface SocialSignInArgs {
+  provider: "google";
+  callbackURL?: string;
+}
+
 export interface NeonAuthClient {
   signIn: {
     email: (args: {
       email: string;
       password: string;
     }) => Promise<SignInResult>;
+    social: (args: SocialSignInArgs) => Promise<SignInResult>;
   };
   signUp: {
     email: (args: {
@@ -48,12 +58,13 @@ export interface NeonAuthClient {
     }) => Promise<SignInResult>;
   };
   signOut: () => Promise<unknown>;
+  // Better Auth: getSession devolve user + session.token no mesmo payload.
   getSession: () => Promise<{
     data?: {
       user?: { id: string; email?: string; name?: string | null };
+      session?: { token?: string };
     };
   } | null>;
-  getJWTToken?: () => Promise<string | null | undefined>;
 }
 
 let cachedClient: NeonAuthClient | null = null;
@@ -84,14 +95,19 @@ export async function getAuthClient(): Promise<NeonAuthClient> {
 /**
  * Pega o JWT atual do user logado pra mandar como `Authorization: Bearer`
  * em chamadas /api. Retorna null se não logado.
+ *
+ * IMPORTANTE: NÃO chamar `client.getJWTToken()` direto. O Better Auth
+ * client é um Proxy e converte qualquer método inexistente em request
+ * HTTP kebab-case (`getJWTToken` → POST `/get-j-w-t-token` que 404).
+ * O endpoint correto é `/get-session` que devolve token dentro do
+ * payload da session.
  */
 export async function getJwtToken(): Promise<string | null> {
   if (!isAuthConfigured()) return null;
   try {
     const client = await getAuthClient();
-    if (!client.getJWTToken) return null;
-    const tok = await client.getJWTToken();
-    return tok ?? null;
+    const session = await client.getSession();
+    return session?.data?.session?.token ?? null;
   } catch {
     return null;
   }

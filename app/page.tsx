@@ -7,8 +7,8 @@ import Link from "next/link";
 import {
   ArrowRight,
   Clipboard,
-  Film,
   History,
+  Library,
   Sparkles,
   Target,
   TrendingUp,
@@ -18,9 +18,11 @@ import {
 import { isValidInstagramUrl } from "@/lib/utils";
 import type { AdaptBrief, AdaptResponse } from "@/lib/types";
 import { ResultView } from "@/components/result-view";
-import { UnlockGate } from "@/components/unlock-gate";
 import { LoadingPipeline } from "@/components/loading-pipeline";
 import { AuthBar } from "@/components/auth-bar";
+import { AuthDialog } from "@/components/auth-dialog";
+import { QuotaBlockedModal } from "@/components/quota-blocked-modal";
+import { useNeonSession } from "@/lib/auth-client";
 
 const OBJETIVOS: Array<{
   id: AdaptBrief["objetivo"];
@@ -60,6 +62,19 @@ function getOrCreateDeviceId(): string {
   }
 }
 
+// Persistência do form pendente em sessionStorage — sobrevive ao redirect
+// OAuth do Google (que recarrega a página).
+const PENDING_FORM_KEY = "rv_pending_brief";
+
+interface PendingBrief {
+  sourceUrl: string;
+  tema: string;
+  objetivo: AdaptBrief["objetivo"];
+  cta: string;
+  persona?: string;
+  nicho?: string;
+}
+
 export default function Home() {
   const [step, setStep] = useState<"form" | "loading" | "result">("form");
   // Referência ao device ID — inicializado no useEffect pra evitar SSR mismatch
@@ -73,10 +88,58 @@ export default function Home() {
   const [nicho, setNicho] = useState("");
   const [result, setResult] = useState<AdaptResponse | null>(null);
 
+  // Auth gate pra interceptar submit anônimo
+  const session = useNeonSession();
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  const pendingBriefRef = useRef<PendingBrief | null>(null);
+
+  // Quota blocked (paywall) — abre quando API responde 402 quota_exceeded
+  const [quotaBlock, setQuotaBlock] = useState<{
+    used: number;
+    limit: number;
+    resetsAt: string;
+  } | null>(null);
+
   // Inicializa device ID no cliente (pós-hidratação)
   useEffect(() => {
     deviceIdRef.current = getOrCreateDeviceId();
   }, []);
+
+  // Após login (incluindo redirect OAuth), restaura form pendente e dispara
+  // a geração automaticamente.
+  useEffect(() => {
+    if (session.isPending || !session.data?.user) return;
+    let pending: PendingBrief | null = pendingBriefRef.current;
+    if (!pending && typeof window !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(PENDING_FORM_KEY);
+        if (raw) pending = JSON.parse(raw) as PendingBrief;
+      } catch {
+        // ignore parse errors
+      }
+    }
+    if (!pending) return;
+    // Limpa antes de disparar pra evitar loop em re-renders
+    pendingBriefRef.current = null;
+    try {
+      sessionStorage.removeItem(PENDING_FORM_KEY);
+    } catch {
+      /* noop */
+    }
+    // Restaura state visualmente e dispara geração
+    setSourceUrl(pending.sourceUrl);
+    setTema(pending.tema);
+    setObjetivo(pending.objetivo);
+    setCta(pending.cta);
+    if (pending.persona) setPersona(pending.persona);
+    if (pending.nicho) setNicho(pending.nicho);
+    setShowAuthDialog(false);
+    // Pequeno delay pra garantir que setState propagou antes do fetch
+    window.setTimeout(() => {
+      void runAdapt(pending);
+    }, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.isPending, session.data?.user?.id]);
 
   async function handlePaste() {
     try {
@@ -92,29 +155,17 @@ export default function Home() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!isValidInstagramUrl(sourceUrl)) {
-      toast.error("Cola um link de Reel/post Instagram válido");
-      return;
-    }
-    if (tema.trim().length < 3) {
-      toast.error("Descreve o tema do TEU vídeo (mínimo 3 chars)");
-      return;
-    }
-    if (cta.trim().length < 2) {
-      toast.error("Define o CTA — o que o user vai fazer?");
-      return;
-    }
-
+  /**
+   * Executa a chamada à API com o brief. Pode ser disparado pelo submit
+   * direto (user logado) ou pelo useEffect pós-login (auth wall completou).
+   */
+  async function runAdapt(brief: PendingBrief) {
     setStep("loading");
     setResult(null);
 
     // Timeout client-side @ 55s — o backend tem maxDuration 60s mas o
-    // pipeline pode estourar (Apify lento + File API upload + Gemini).
-    // Sem AbortController, fetch ficava pendurado até o Vercel cortar
-    // 504 às 60s e o user via toast genérico. Com timeout próprio,
-    // ganhamos 5s de margem pra fechar conexão e dar mensagem decente.
+    // pipeline pode estourar. Com AbortController, ganhamos 5s de margem
+    // pra fechar conexão e dar mensagem decente.
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 55_000);
 
@@ -131,16 +182,26 @@ export default function Home() {
         headers: reqHeaders,
         signal: controller.signal,
         body: JSON.stringify({
-          sourceUrl: sourceUrl.trim(),
-          tema: tema.trim(),
-          objetivo,
-          cta: cta.trim(),
-          persona: persona.trim() || undefined,
-          nicho: nicho.trim() || undefined,
+          sourceUrl: brief.sourceUrl.trim(),
+          tema: brief.tema.trim(),
+          objetivo: brief.objetivo,
+          cta: brief.cta.trim(),
+          persona: brief.persona?.trim() || undefined,
+          nicho: brief.nicho?.trim() || undefined,
         }),
       });
 
       const data = await res.json();
+      if (res.status === 402 && data?.code === "quota_exceeded" && data?.quota) {
+        // Limite mensal atingido — abre modal paywall
+        setQuotaBlock({
+          used: data.quota.used,
+          limit: data.quota.limit,
+          resetsAt: data.quota.resetsAt,
+        });
+        setStep("form");
+        return;
+      }
       if (!res.ok) {
         throw new Error(data.error || "Falha desconhecida");
       }
@@ -160,6 +221,49 @@ export default function Home() {
     } finally {
       window.clearTimeout(timeoutId);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!isValidInstagramUrl(sourceUrl)) {
+      toast.error("Cola um link de Reel/post Instagram válido");
+      return;
+    }
+    if (tema.trim().length < 3) {
+      toast.error("Descreve o tema do TEU vídeo (mínimo 3 chars)");
+      return;
+    }
+    if (cta.trim().length < 2) {
+      toast.error("Define o CTA — o que o user vai fazer?");
+      return;
+    }
+
+    const brief: PendingBrief = {
+      sourceUrl: sourceUrl.trim(),
+      tema: tema.trim(),
+      objetivo,
+      cta: cta.trim(),
+      persona: persona.trim() || undefined,
+      nicho: nicho.trim() || undefined,
+    };
+
+    // ── LOGIN WALL ──────────────────────────────────────────────────────
+    // Intercepta antes do fetch: se anônimo, persiste brief em sessionStorage
+    // (sobrevive a redirect OAuth Google) + abre AuthDialog. Após login,
+    // useEffect detecta sessão e dispara runAdapt automaticamente.
+    if (!session.isPending && !session.data?.user) {
+      pendingBriefRef.current = brief;
+      try {
+        sessionStorage.setItem(PENDING_FORM_KEY, JSON.stringify(brief));
+      } catch {
+        /* sessionStorage bloqueado — segue só com ref */
+      }
+      setShowAuthDialog(true);
+      return;
+    }
+
+    // User logado: dispara direto
+    void runAdapt(brief);
   }
 
   function handleReset() {
@@ -244,6 +348,17 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <Link
+              href="/biblioteca"
+              className="rv-btn rv-btn-ghost"
+              style={{
+                padding: "8px 14px",
+                fontSize: 10,
+                letterSpacing: "0.18em",
+              }}
+            >
+              <Library size={12} /> Biblioteca
+            </Link>
+            <Link
               href="/meus-roteiros"
               className="rv-btn rv-btn-ghost"
               style={{
@@ -254,10 +369,8 @@ export default function Home() {
             >
               <History size={12} /> Meus roteiros
             </Link>
-            <a
-              href="https://viral.kaleidos.com.br"
-              target="_blank"
-              rel="noreferrer"
+            <Link
+              href="/precos"
               className="rv-btn rv-btn-ghost"
               style={{
                 padding: "8px 14px",
@@ -265,8 +378,8 @@ export default function Home() {
                 letterSpacing: "0.18em",
               }}
             >
-              <Film size={12} /> Sequência Viral
-            </a>
+              <Sparkles size={12} /> Planos
+            </Link>
             <AuthBar />
           </div>
         </div>
@@ -577,18 +690,38 @@ export default function Home() {
             className="mx-auto"
             style={{ maxWidth: 1280, padding: "40px 28px 100px" }}
           >
-            <UnlockGate
-              data={result}
-              tema={tema}
-              objetivo={objetivo}
-              sourceUrl={sourceUrl}
-              scriptId={result.scriptId ?? null}
-            >
-              <ResultView data={result} tema={tema} onReset={handleReset} />
-            </UnlockGate>
+            {/* UnlockGate (email/whatsapp) removido 2026-05-01 — auth real
+                Neon Auth substituiu o lead capture. Result é mostrado
+                direto pra user logado (login wall fica antes do submit). */}
+            <ResultView data={result} tema={tema} onReset={handleReset} />
           </motion.section>
         )}
       </AnimatePresence>
+
+      {/* LOGIN WALL — abre quando user anônimo tenta gerar reel */}
+      {showAuthDialog && (
+        <AuthDialog
+          title="Pra adaptar seu reel"
+          subtitle="Cria conta em 10s e seu roteiro fica salvo. Plano free libera 3 reels/mês."
+          onClose={() => setShowAuthDialog(false)}
+          onSuccess={() => {
+            // useEffect [session.data.user.id] detecta o user logado e
+            // dispara runAdapt automaticamente. Aqui só refresh + close.
+            session.refresh();
+            setShowAuthDialog(false);
+          }}
+        />
+      )}
+
+      {/* PAYWALL — abre quando user logado free atinge limite mensal */}
+      {quotaBlock && (
+        <QuotaBlockedModal
+          used={quotaBlock.used}
+          limit={quotaBlock.limit}
+          resetsAt={quotaBlock.resetsAt}
+          onClose={() => setQuotaBlock(null)}
+        />
+      )}
 
       {/* FOOTER */}
       <footer

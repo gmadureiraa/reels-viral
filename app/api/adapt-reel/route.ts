@@ -144,6 +144,29 @@ export async function POST(req: Request) {
     `[adapt-reel] user=${userId ?? `anon-${getClientKey(req)}`} url=${brief.sourceUrl}`
   );
 
+  // ── Quota guard (paywall) ─────────────────────────────────────────────
+  // Aplicado SÓ pra users logados. Anônimos batem no rate limit anterior
+  // (2/h) e no login wall do client. User logado: checa plano + uso mensal.
+  if (userId) {
+    try {
+      const { getQuotaStatus } = await import("@/lib/subscriptions");
+      const quota = await getQuotaStatus(userId);
+      if (quota.blocked) {
+        return NextResponse.json(
+          {
+            error: `Você atingiu o limite de ${quota.limit} reels do plano ${quota.plan}. Reset em ${new Date(quota.resetsAt).toLocaleDateString("pt-BR")}.`,
+            code: "quota_exceeded",
+            quota,
+          },
+          { status: 402 }, // Payment Required
+        );
+      }
+    } catch (err) {
+      // Best-effort: se a tabela ainda não existe ou DB falha, não bloqueia.
+      console.warn("[adapt-reel] quota check skipped:", err);
+    }
+  }
+
   try {
     // 1) Scrape Apify (com cache 24h por shortCode quando DB tá ativo).
     //    Cache compartilhado entre users — economiza créditos Apify quando
