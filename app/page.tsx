@@ -199,8 +199,10 @@ function LandingPageInner() {
         <h1
           className="rv-display"
           style={{
-            fontSize: "clamp(44px, 7vw, 88px)",
-            lineHeight: 0.96,
+            // Mobile: 36px (cabe em 360px sem letras cortadas).
+            // Desktop: até 88px com clamp + 7vw responsivo.
+            fontSize: "clamp(36px, 7vw, 88px)",
+            lineHeight: 0.98,
             letterSpacing: "-0.02em",
             marginBottom: 24,
           }}

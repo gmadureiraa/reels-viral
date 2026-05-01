@@ -57,21 +57,50 @@ Abre `http://localhost:3000`.
 
 ### Env vars
 
-```
-# APIs externas
+```bash
+# ── Pipeline ────────────────────────────────────────────────────────
 APIFY_API_KEY=...                    # apify.com → Settings → API tokens
 GEMINI_API_KEY=...                   # ai.google.dev → Get API key
 
-# Neon Postgres
+# ── Neon Postgres ───────────────────────────────────────────────────
 DATABASE_URL=...                     # connection string com pooler
 
-# Neon Auth (Better Auth)
+# ── Neon Auth (Better Auth) ─────────────────────────────────────────
 NEXT_PUBLIC_NEON_AUTH_URL=...        # endpoint pra signin/signup
 NEON_AUTH_JWKS_URL=...               # JWKS pra validar JWT no server
 
-# Neon Data API (opcional, não usado ainda)
-NEXT_PUBLIC_NEON_DATA_API=...
+# ── Stripe (paywall + subscriptions) ────────────────────────────────
+STRIPE_SECRET_KEY=...                # mesma conta Stripe do SV
+STRIPE_WEBHOOK_SECRET_RV=...         # gerado ao criar webhook endpoint
+
+# ── Admin guard ─────────────────────────────────────────────────────
+ADMIN_EMAILS=email1@x.com,email2@y.com  # comma-sep, opcional
+                                     # default: gf.madureira@hotmail.com,
+                                     # gf.madureiraa@gmail.com
+
+# ── Cost guard global (kill switch — opcional) ──────────────────────
+SOFT_DAILY_CAP_USD=20                # ex: $20/dia. Free + anon bloqueados
+                                     # quando ai_usage do dia ≥ cap.
+                                     # Pagantes seguem normal.
+
+# ── LinkedIn scrape (DESATIVADO no Radar) ───────────────────────────
+# ENABLE_LINKEDIN_SCRAPE=true        # só RV não usa, ignorar.
 ```
+
+### Migration
+
+```bash
+DATABASE_URL=<prod> bun scripts/migrate.ts
+# Cria tabelas: scripts, scrape_cache, leads, user_subscriptions,
+# library_reels, ai_usage. Idempotente.
+```
+
+### Stripe webhook
+
+URL: `https://<domínio>/api/stripe/webhook`
+Eventos: `checkout.session.completed`, `customer.subscription.updated`,
+`customer.subscription.deleted`. Copiar Signing Secret pra
+`STRIPE_WEBHOOK_SECRET_RV`.
 
 ### Deploy Vercel
 
@@ -100,20 +129,68 @@ vercel --prod
 
 ```
 app/
-  api/adapt-reel/route.ts   # core endpoint — pipeline síncrono Apify+Gemini
-  page.tsx                   # landing + form + 3-state machine (form/loading/result)
-  layout.tsx                 # fonts (Plus Jakarta + Instrument Serif + Geist Mono)
-  globals.css                # design system @theme (cream + REC coral + ink)
+  page.tsx                       # / — landing pública (hero + input + Gerar)
+  layout.tsx                     # root: fonts + metadata + Toaster + Footer
+  globals.css                    # design system @theme
+
+  app/                           # /app — app interno autenticado
+    layout.tsx                   # sidebar fixed (cream+REC+ink) + auth gate
+    page.tsx                     # /app — form completo + result inline
+    biblioteca/page.tsx          # /app/biblioteca — galeria com paywall blur
+    meus-roteiros/page.tsx       # /app/meus-roteiros — histórico
+    meus-roteiros/[id]/page.tsx  # detalhe roteiro
+    precos/page.tsx              # /app/precos — 3 planos + Stripe checkout
+    admin/page.tsx               # /admin — KPIs + users + custos (admin only)
+
+  api/
+    adapt-reel/route.ts          # core: Apify + Gemini Flash (síncrono)
+    quota/route.ts               # GET quota status pro client
+    library/route.ts             # GET reels biblioteca (paywall server-side)
+    admin/stats/route.ts         # GET payload completo do dashboard admin
+    stripe/checkout/route.ts     # POST cria Stripe session
+    stripe/webhook/route.ts      # eventos sub.* (filtra metadata.app=rv)
 
 components/
-  loading-pipeline.tsx       # 6-stage progress com checkmarks animados
-  result-view.tsx            # análise + estrutura + storyboard cena-por-cena
+  auth-dialog.tsx                # Login/Signup + Google OAuth
+  quota-blocked-modal.tsx        # paywall ao bater limite mensal
+  loading-pipeline.tsx           # progress animado durante pipeline
+  result-view.tsx                # roteiro + storyboard cena-por-cena
 
 lib/
-  apify.ts                   # fetchInstagramPost + downloadReelVideo
-  gemini.ts                  # adaptReelWithGemini (file upload + structured output)
-  types.ts                   # AdaptBrief, AdaptResponse, Scene, etc
-  utils.ts                   # extractShortCode, isValidInstagramUrl, formatNumber
+  auth-client.ts                 # Neon Auth (Better Auth) lazy client
+  server-auth.ts                 # JWT validation server-side
+  admin.ts + admin-emails.ts     # ADMIN_EMAILS guard
+  pricing.ts                     # PLANS_RV (free/basic/max) + helpers
+  subscriptions.ts               # getUserSubscription + getQuotaStatus
+  stripe.ts                      # SDK lazy (proxy)
+  cost-tracking.ts               # logUsage + estimateGeminiCost
+  cost-guard.ts                  # kill switch global (SOFT_DAILY_CAP_USD)
+  apify.ts + gemini.ts           # provedores
+  types.ts + utils.ts            # shared
+```
+
+### Fluxo end-to-end
+
+```
+[/] landing
+  └─ user cola URL + click "Gerar"
+     ├─ sessionStorage["rv_pending_brief"] = { sourceUrl }
+     ├─ se anônimo: AuthDialog (Email / Google)
+     │              └─ pós-login: useEffect detecta → router.push("/app")
+     └─ se logado: router.push("/app") direto
+
+[/app] app interno
+  └─ useEffect detecta pendingBrief no sessionStorage
+     └─ pré-preenche form, user completa tema/CTA, click "Adaptar"
+        ├─ getJwtToken → Authorization: Bearer
+        ├─ POST /api/adapt-reel
+        │   ├─ rate limit (anon 2/h, user 10/h)
+        │   ├─ quota guard (free: 3/mês, basic: 30, max: 100) → 402
+        │   ├─ cost guard global (SOFT_DAILY_CAP_USD) → 503
+        │   ├─ Apify scrape (cache 24h por shortCode)
+        │   ├─ Gemini 2.5 Flash analyze + script
+        │   └─ logUsage (Apify + Gemini cost em ai_usage)
+        └─ ResultView inline + saveScript no DB
 ```
 
 ---

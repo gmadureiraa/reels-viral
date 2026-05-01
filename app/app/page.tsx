@@ -106,6 +106,15 @@ export default function Home() {
     resetsAt: string;
   } | null>(null);
 
+  // Primeiro nome do user (pra saudação no header)
+  const userFirstName = (() => {
+    const u = session.data?.user;
+    if (!u) return "";
+    if (u.name) return u.name.split(" ")[0];
+    if (u.email) return u.email.split("@")[0].split(".")[0];
+    return "";
+  })();
+
   // Inicializa device ID no cliente (pós-hidratação)
   useEffect(() => {
     deviceIdRef.current = getOrCreateDeviceId();
@@ -300,56 +309,47 @@ export default function Home() {
             className="mx-auto"
             style={{ maxWidth: 1180, padding: "60px 28px 100px" }}
           >
-            {/* HERO */}
-            <div className="grid gap-12 grid-cols-1 md:grid-cols-[1.1fr_0.9fr]">
+            {/* HEADER COMPACTO — substitui hero gigante (já vive na landing) */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "space-between",
+                gap: 18,
+                flexWrap: "wrap",
+                marginBottom: 12,
+              }}
+            >
               <div>
                 <span className="rv-eyebrow">
-                  <span className="rv-rec-dot" /> ENGENHARIA REVERSA · IA
+                  <span className="rv-rec-dot" /> NOVO REEL · ENGENHARIA REVERSA
                 </span>
                 <h1
-                  className="rv-display mt-5"
+                  className="rv-display mt-3"
                   style={{
-                    fontSize: "clamp(48px, 6.4vw, 86px)",
-                    lineHeight: 0.96,
+                    fontSize: "clamp(32px, 4vw, 48px)",
+                    lineHeight: 1.05,
+                    letterSpacing: "-0.02em",
                   }}
                 >
-                  O reel viraliza. <br />
-                  Você descobre <em>como</em>. <br />
-                  E refilma <span style={{ color: "var(--color-rv-rec)" }}>seu.</span>
+                  Olá{userFirstName ? <>, <em>{userFirstName}</em></> : <em></em>}.
+                  Cole o link e <em>adapta</em>.
                 </h1>
-                <p
-                  className="mt-6"
-                  style={{
-                    fontSize: 17,
-                    lineHeight: 1.55,
-                    color: "var(--color-rv-muted)",
-                    maxWidth: 540,
-                  }}
-                >
-                  Cole o link de qualquer Reel viral. A IA dissecca a estrutura
-                  (hook, promessa, demo, CTA) em 30 segundos e devolve um
-                  <strong style={{ color: "var(--color-rv-ink)" }}>
-                    {" "}
-                    roteiro novo cena por cena
-                  </strong>{" "}
-                  no SEU nicho — gravável direto, sem soar plágio.
-                </p>
-
-                <div
-                  className="mt-8 flex items-center gap-3"
-                  style={{ flexWrap: "wrap" }}
-                >
-                  <BadgeStat label="Análise estrutural" value="< 30s" />
-                  <BadgeStat label="Storyboard" value="cena × cena" />
-                  <BadgeStat label="Stack" value="Gemini 2.5" />
-                </div>
               </div>
-
-              {/* MOCKUP DE STORYBOARD */}
-              <div className="hidden md:block">
-                <StoryboardMockup />
-              </div>
+              <QuotaCard />
             </div>
+            <p
+              className="rv-mono"
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: "var(--color-rv-muted)",
+                marginBottom: 32,
+              }}
+            >
+              Reel viral → análise estrutural → roteiro novo cena por cena
+            </p>
 
             {/* FORM PRINCIPAL */}
             <form
@@ -640,6 +640,105 @@ const inputStyle: React.CSSProperties = {
   fontSize: 14,
   outline: "none",
 };
+
+// QuotaCard — mostra "X de Y reels usados este mês". Fetch silencioso.
+// Free user vê CTA pra upgrade quando passa 50% da quota.
+function QuotaCard() {
+  const [quota, setQuota] = useState<{
+    plan: string;
+    used: number;
+    limit: number;
+    blocked: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const { getJwtToken } = await import("@/lib/auth-client");
+        const jwt = await getJwtToken();
+        const res = await fetch("/api/quota", {
+          headers: jwt ? { Authorization: `Bearer ${jwt}` } : undefined,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancel) setQuota(data);
+      } catch {
+        /* silencioso */
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  if (!quota) return null;
+
+  const ratio = quota.limit > 0 ? quota.used / quota.limit : 0;
+  const pct = Math.min(100, Math.round(ratio * 100));
+  let barColor = "var(--color-rv-ink)";
+  if (ratio >= 0.9) barColor = "var(--color-rv-rec)";
+  else if (ratio >= 0.7) barColor = "var(--color-rv-amber)";
+
+  return (
+    <div
+      style={{
+        background: "var(--color-rv-cream)",
+        border: "1.5px solid var(--color-rv-ink)",
+        boxShadow: "3px 3px 0 0 var(--color-rv-ink)",
+        padding: "12px 16px",
+        minWidth: 180,
+      }}
+    >
+      <div className="rv-mono" style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--color-rv-muted)", marginBottom: 4 }}>
+        Plano {quota.plan}
+      </div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6 }}>
+        <span className="rv-display" style={{ fontSize: 22, lineHeight: 1 }}>
+          {quota.used}
+        </span>
+        <span style={{ fontSize: 12, color: "var(--color-rv-muted)" }}>
+          / {quota.limit} reels
+        </span>
+      </div>
+      <div
+        style={{
+          height: 4,
+          background: "var(--color-rv-soft)",
+          border: "1px solid var(--color-rv-line)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${Math.max(2, pct)}%`,
+            height: "100%",
+            background: barColor,
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+      {quota.plan === "free" && ratio >= 0.5 && (
+        <a
+          href="/app/precos"
+          className="rv-mono"
+          style={{
+            display: "block",
+            marginTop: 8,
+            fontSize: 9,
+            fontWeight: 700,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: "var(--color-rv-rec)",
+            textDecoration: "none",
+          }}
+        >
+          → Subir pra Basic
+        </a>
+      )}
+    </div>
+  );
+}
 
 function BadgeStat({ label, value }: { label: string; value: string }) {
   return (

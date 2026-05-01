@@ -145,13 +145,19 @@ export async function POST(req: Request) {
     `[adapt-reel] user=${userId ?? `anon-${getClientKey(req)}`} url=${brief.sourceUrl}`
   );
 
-  // ── Quota guard (paywall) ─────────────────────────────────────────────
-  // Aplicado SÓ pra users logados. Anônimos batem no rate limit anterior
-  // (2/h) e no login wall do client. User logado: checa plano + uso mensal.
+  // ── Quota guard (paywall) + Cost guard global ────────────────────────
+  // 1) Quota individual: free user com 3+ reels do mês → 402
+  // 2) Cost guard global (kill switch): se SOFT_DAILY_CAP_USD definido e
+  //    gasto do dia exceder, bloqueia free + anon (pagantes seguem).
+  let isPaidUser = false;
   if (userId) {
     try {
-      const { getQuotaStatus } = await import("@/lib/subscriptions");
-      const quota = await getQuotaStatus(userId);
+      const { getQuotaStatus, getUserSubscription } = await import("@/lib/subscriptions");
+      const [quota, sub] = await Promise.all([
+        getQuotaStatus(userId),
+        getUserSubscription(userId),
+      ]);
+      isPaidUser = sub.plan !== "free";
       if (quota.blocked) {
         return NextResponse.json(
           {
@@ -166,6 +172,26 @@ export async function POST(req: Request) {
       // Best-effort: se a tabela ainda não existe ou DB falha, não bloqueia.
       console.warn("[adapt-reel] quota check skipped:", err);
     }
+  }
+
+  // Cost guard global — kill switch quando o dia tá esquentando demais
+  try {
+    const { checkCostGuard } = await import("@/lib/cost-guard");
+    const guard = await checkCostGuard(isPaidUser);
+    if (!guard.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            "Recebemos muitas gerações hoje, dá um respiro. Tenta novamente amanhã ou assine um plano pago pra prioridade.",
+          code: "soft_cap_exceeded",
+          spent: guard.spentTodayUsd,
+          cap: guard.capUsd,
+        },
+        { status: 503 }, // Service Unavailable
+      );
+    }
+  } catch (err) {
+    console.warn("[adapt-reel] cost guard skipped:", err);
   }
 
   try {
