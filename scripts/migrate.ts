@@ -183,6 +183,50 @@ async function main() {
   `);
   console.log("[migrate] ✓ library_reels indexes");
 
+  // ────────────────────────────────────────────────────────────────────
+  // AI Usage / Cost tracking (F4 — admin area, 2026-05-01)
+  // ────────────────────────────────────────────────────────────────────
+  // Logamos cada chamada cara (Apify scrape + Gemini Flash) com custo
+  // estimado em USD. Usado pelo /admin/stats pra mostrar custo/mês,
+  // breakdown por provider, breakdown por user.
+  //
+  // provider: 'apify' | 'gemini' | 'imagen'
+  // operation: 'scrape' | 'analyze' | 'cache_hit' (cache_hit log com cost=0)
+  // user_id NULL pra anônimos.
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS ai_usage (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id TEXT,
+      script_id UUID REFERENCES scripts(id) ON DELETE SET NULL,
+      provider TEXT NOT NULL,
+      model TEXT,
+      operation TEXT NOT NULL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      cost_usd NUMERIC(10, 6) NOT NULL DEFAULT 0,
+      duration_ms INTEGER,
+      success BOOLEAN NOT NULL DEFAULT TRUE,
+      error_message TEXT,
+      metadata JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  console.log("[migrate] ✓ ai_usage");
+
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS ai_usage_user_idx
+    ON ai_usage (user_id, created_at DESC);
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS ai_usage_provider_idx
+    ON ai_usage (provider, created_at DESC);
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS ai_usage_created_idx
+    ON ai_usage (created_at DESC);
+  `);
+  console.log("[migrate] ✓ ai_usage indexes");
+
   // Sanity: lista as tabelas criadas no schema public.
   const rows = await sql.query(`
     SELECT table_name FROM information_schema.tables

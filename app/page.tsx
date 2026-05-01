@@ -9,6 +9,7 @@ import {
   Clipboard,
   History,
   Library,
+  Shield,
   Sparkles,
   Target,
   TrendingUp,
@@ -23,6 +24,7 @@ import { AuthBar } from "@/components/auth-bar";
 import { AuthDialog } from "@/components/auth-dialog";
 import { QuotaBlockedModal } from "@/components/quota-blocked-modal";
 import { useNeonSession } from "@/lib/auth-client";
+import { isAdminEmail } from "@/lib/admin-emails";
 
 const OBJETIVOS: Array<{
   id: AdaptBrief["objetivo"];
@@ -380,6 +382,19 @@ export default function Home() {
             >
               <Sparkles size={12} /> Planos
             </Link>
+            {isAdminEmail(session.data?.user?.email) && (
+              <Link
+                href="/admin"
+                className="rv-btn rv-btn-ghost"
+                style={{
+                  padding: "8px 14px",
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                }}
+              >
+                <Shield size={12} /> Admin
+              </Link>
+            )}
             <AuthBar />
           </div>
         </div>

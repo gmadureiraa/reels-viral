@@ -22,6 +22,7 @@ import { checkRateLimit, getClientKey } from "@/lib/rate-limit";
 import { getOptionalUserId } from "@/lib/server-auth";
 import { getCachedScrape, setCachedScrape } from "@/lib/scripts-store";
 import { isDbConfigured } from "@/lib/db";
+import { logUsage, APIFY_REEL_COST_USD, estimateGeminiCost } from "@/lib/cost-tracking";
 import type { AdaptResponse, SourceMeta } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -174,11 +175,14 @@ export async function POST(req: Request) {
     //    caem ~70% em reels populares.
     const shortCode = extractShortCode(brief.sourceUrl);
     let item: ApifyReelItem | null = null;
+    let cacheHit = false;
+    const apifyT0 = Date.now();
     if (isDbConfigured() && shortCode) {
       try {
         const cached = (await getCachedScrape(shortCode)) as ApifyReelItem | null;
         if (cached?.shortCode && cached?.videoUrl) {
           item = cached;
+          cacheHit = true;
         }
       } catch (err) {
         console.warn("[adapt-reel] cache lookup failed:", err);
@@ -195,6 +199,18 @@ export async function POST(req: Request) {
         }
       }
     }
+    // Log Apify usage (cache hit cost=0, miss ~$0.008)
+    void logUsage({
+      userId,
+      scriptId: null,
+      provider: "apify",
+      operation: cacheHit ? "scrape_cache_hit" : "scrape_miss",
+      costUsd: cacheHit ? 0 : APIFY_REEL_COST_USD,
+      durationMs: Date.now() - apifyT0,
+      success: true,
+      metadata: { shortCode, sourceUrl: brief.sourceUrl },
+    });
+
     if (item.type !== "Video" || !item.videoUrl) {
       return NextResponse.json(
         {
@@ -209,11 +225,32 @@ export async function POST(req: Request) {
     const videoBytes = await downloadReelVideo(item.videoUrl);
 
     // 3+4) Gemini analisa + gera
+    const geminiT0 = Date.now();
     const { analysis, script } = await adaptReelWithGemini(
       videoBytes,
       brief,
       item.caption
     );
+    // Estima custo Gemini baseado em duração do reel + tamanho do JSON output
+    const geminiSeconds = Math.max(1, item.videoDuration ?? 60);
+    const outputTokensEstimate = Math.round(JSON.stringify({ analysis, script }).length / 3.5);
+    const geminiCost = estimateGeminiCost({
+      durationSeconds: geminiSeconds,
+      outputTokens: outputTokensEstimate,
+    });
+    void logUsage({
+      userId,
+      scriptId: null,
+      provider: "gemini",
+      model: "gemini-2.5-flash",
+      operation: "analyze_reel",
+      inputTokens: Math.round(geminiSeconds * 258),
+      outputTokens: outputTokensEstimate,
+      costUsd: geminiCost,
+      durationMs: Date.now() - geminiT0,
+      success: true,
+      metadata: { shortCode, durationSeconds: geminiSeconds },
+    });
 
     const source: SourceMeta = {
       shortCode: item.shortCode,
