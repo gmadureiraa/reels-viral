@@ -287,9 +287,25 @@ export function useLoginMigration(): void {
     if (!userId || !isClient()) return;
     const flag = sessionStorage.getItem(MIGRATION_FLAG_KEY);
     if (flag === userId) return;
-    sessionStorage.setItem(MIGRATION_FLAG_KEY, userId);
-    void migrateLocalToDb().catch((err) =>
-      console.warn("[rv:storage] auto-migrate falhou:", err),
-    );
+
+    // Race condition fix (audit 2026-05-02): a flag SÓ é setada após
+    // sucesso. Antes, setávamos antes do await — se o JWT ainda não
+    // estava pronto (ver getJwtTokenWithRetry) ou o fetch falhava, a
+    // migration não tentava de novo na mesma session, perdendo histórico
+    // anônimo silenciosamente.
+    void (async () => {
+      try {
+        const result = await migrateLocalToDb();
+        if (result.migrated > 0 || result.failed === 0) {
+          // Marca como done só se houve migração ou se nada havia pra
+          // migrar (failed=0 e migrated=0). Se falhou tudo, mantém sem
+          // flag pra tentar de novo no próximo render.
+          sessionStorage.setItem(MIGRATION_FLAG_KEY, userId);
+        }
+      } catch (err) {
+        console.warn("[rv:storage] auto-migrate falhou:", err);
+        // Não seta flag — próximo render tenta de novo
+      }
+    })();
   }, [userId]);
 }
