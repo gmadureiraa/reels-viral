@@ -11,7 +11,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { isValidInstagramUrl } from "@/lib/utils";
 import {
   PlusCircle,
   History,
@@ -55,6 +56,7 @@ const ADMIN_NAV_ITEM: NavItem = {
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const session = useNeonSession();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -62,6 +64,44 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // user fica logado. Cobre todos os caminhos: AuthBar, AuthDialog do
   // landing, AuthDialog do /app, e Google OAuth callback. Idempotente.
   useLoginMigration();
+
+  // Bridge do Radar Viral em /app — anônimo bate aqui com ?topic= ou ?url=
+  // antes do auth gate redirecionar. Captura o brief em sessionStorage com
+  // autoRun=false ANTES do redirect, pra sobreviver ao auth flow e o /app
+  // pre-popular o form depois do login.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawUrl =
+      searchParams.get("url") ??
+      searchParams.get("source") ??
+      searchParams.get("reel");
+    const rawTopic = searchParams.get("topic");
+    if (!rawUrl && !rawTopic) return;
+
+    const sourceUrl =
+      rawUrl && isValidInstagramUrl(rawUrl) ? rawUrl.trim() : "";
+    const tema = rawTopic ? rawTopic.trim() : "";
+
+    if (sourceUrl || tema) {
+      try {
+        sessionStorage.setItem(
+          "rv_pending_brief",
+          JSON.stringify({
+            sourceUrl,
+            tema,
+            objetivo: "seguidores",
+            cta: "",
+            autoRun: false,
+          }),
+        );
+      } catch {
+        /* sessionStorage bloqueado */
+      }
+    }
+    // Não limpa URL aqui — o /app/page.tsx faz isso após consumir state.
+    // Se o user é anônimo, o redirect leva pra landing e os params somem
+    // junto. Se logado, /app/page.tsx limpa e pre-popula.
+  }, [searchParams]);
 
   // Auth gate: se não logado e auth está configurado, manda pra landing
   // (a landing tem o login wall).

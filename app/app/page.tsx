@@ -10,7 +10,8 @@
  * geração automaticamente.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -80,9 +81,26 @@ interface PendingBrief {
   cta: string;
   persona?: string;
   nicho?: string;
+  /**
+   * Quando false, apenas pre-popula o form sem disparar geração.
+   * Usado pelo bridge do Radar Viral (`?topic=`/`?url=`) — user revisa
+   * antes de clicar "Adaptar reel". Default: true (auth wall).
+   */
+  autoRun?: boolean;
 }
 
+// useSearchParams precisa de Suspense boundary (Next 16 App Router) ou o
+// prerender estático quebra. Wrapper ao redor do componente real.
 export default function Home() {
+  return (
+    <Suspense fallback={null}>
+      <HomeInner />
+    </Suspense>
+  );
+}
+
+function HomeInner() {
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<"form" | "loading" | "result">("form");
   // Referência ao device ID — inicializado no useEffect pra evitar SSR mismatch
   const deviceIdRef = useRef<string>("");
@@ -142,7 +160,7 @@ export default function Home() {
     } catch {
       /* noop */
     }
-    // Restaura state visualmente e dispara geração
+    // Restaura state visualmente
     setSourceUrl(pending.sourceUrl);
     setTema(pending.tema);
     setObjetivo(pending.objetivo);
@@ -150,12 +168,54 @@ export default function Home() {
     if (pending.persona) setPersona(pending.persona);
     if (pending.nicho) setNicho(pending.nicho);
     setShowAuthDialog(false);
+
+    // Bridge do Radar Viral marca autoRun=false explicitamente: só pre-popula,
+    // user revisa e clica "Adaptar reel" manualmente. Default (auth wall do
+    // form completo) dispara geração automática.
+    if (pending.autoRun === false) return;
+
     // Pequeno delay pra garantir que setState propagou antes do fetch
     window.setTimeout(() => {
       void runAdapt(pending);
     }, 80);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.isPending, session.data?.user?.id]);
+
+  // Bridge do Radar Viral (caso user logado abra /app?topic=... ou ?url=...
+  // direto, pulando a landing). Pre-popula state SEM disparar geração — user
+  // revisa e clica "Adaptar reel" manualmente. Limpa params da URL.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawUrl =
+      searchParams.get("url") ??
+      searchParams.get("source") ??
+      searchParams.get("reel");
+    const rawTopic = searchParams.get("topic");
+    if (!rawUrl && !rawTopic) return;
+
+    let consumed = false;
+    if (rawUrl && isValidInstagramUrl(rawUrl)) {
+      setSourceUrl(rawUrl.trim());
+      consumed = true;
+    }
+    if (rawTopic) {
+      setTema(rawTopic.trim());
+      consumed = true;
+    }
+
+    if (consumed) {
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("url");
+      cleaned.searchParams.delete("source");
+      cleaned.searchParams.delete("reel");
+      cleaned.searchParams.delete("topic");
+      window.history.replaceState(
+        {},
+        "",
+        cleaned.pathname + (cleaned.search ? cleaned.search : ""),
+      );
+    }
+  }, [searchParams]);
 
   async function handlePaste() {
     try {

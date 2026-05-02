@@ -63,6 +63,74 @@ function LandingPageInner() {
     }
   }, [searchParams]);
 
+  // Bridge do Radar Viral — detecta ?url=/?source=/?reel= (link IG) e ?topic=
+  // (texto livre). Pre-popula input de URL quando dá, ou salva tema em
+  // sessionStorage pra o /app consumir. Logado: redireciona direto pro /app.
+  // Limpa URL após consumir pra evitar re-disparo em refresh.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const rawUrl =
+      searchParams.get("url") ??
+      searchParams.get("source") ??
+      searchParams.get("reel");
+    const rawTopic = searchParams.get("topic");
+    if (!rawUrl && !rawTopic) return;
+
+    let consumed = false;
+    let pendingSourceUrl = "";
+    let pendingTema = "";
+
+    if (rawUrl && isValidInstagramUrl(rawUrl)) {
+      pendingSourceUrl = rawUrl.trim();
+      setSourceUrl(pendingSourceUrl);
+      consumed = true;
+    }
+    if (rawTopic) {
+      pendingTema = rawTopic.trim();
+      consumed = true;
+    }
+
+    if (consumed) {
+      // Salva brief em sessionStorage pro /app pegar (logado vai direto;
+      // anônimo cai no AuthDialog e brief sobrevive ao redirect OAuth).
+      try {
+        sessionStorage.setItem(
+          PENDING_FORM_KEY,
+          JSON.stringify({
+            sourceUrl: pendingSourceUrl,
+            tema: pendingTema,
+            objetivo: "seguidores",
+            cta: "",
+            // Bridge do Radar: só pre-popula. User revisa e clica gerar.
+            autoRun: false,
+          }),
+        );
+      } catch {
+        /* sessionStorage bloqueado */
+      }
+
+      // Limpa params da URL (mantém pathname e outros params como ?login=).
+      const cleaned = new URL(window.location.href);
+      cleaned.searchParams.delete("url");
+      cleaned.searchParams.delete("source");
+      cleaned.searchParams.delete("reel");
+      cleaned.searchParams.delete("topic");
+      window.history.replaceState(
+        {},
+        "",
+        cleaned.pathname + (cleaned.search ? cleaned.search : ""),
+      );
+
+      // Bridge só com ?topic= (sem URL): a landing só tem campo URL, então
+      // tema iria ser sobrescrito quando user submeter o form. Manda direto
+      // pra /app que tem o form completo (auth gate cobre anônimo via
+      // ?login=required, sessionStorage sobrevive).
+      if (!pendingSourceUrl && pendingTema) {
+        router.replace("/app");
+      }
+    }
+  }, [searchParams, router]);
+
   // Stripe success → dispara Subscribe pixel + limpa URL pra não duplicar
   // em refresh. Roda antes do redirect-pra-/app (que tbm reage ao session
   // user) — usar sessionStorage como fence em caso do redirect ser mais rápido.
