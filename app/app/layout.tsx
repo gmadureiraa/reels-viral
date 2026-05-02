@@ -28,6 +28,7 @@ import {
   getAuthClient,
   isAuthConfigured,
 } from "@/lib/auth-client";
+import { useLoginMigration } from "@/lib/storage";
 import { isAdminEmail } from "@/lib/admin-emails";
 
 interface NavItem {
@@ -56,6 +57,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const session = useNeonSession();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auto-migra histórico anônimo (localStorage) → DB Neon assim que o
+  // user fica logado. Cobre todos os caminhos: AuthBar, AuthDialog do
+  // landing, AuthDialog do /app, e Google OAuth callback. Idempotente.
+  useLoginMigration();
 
   // Auth gate: se não logado e auth está configurado, manda pra landing
   // (a landing tem o login wall).

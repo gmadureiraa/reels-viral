@@ -9,11 +9,33 @@
  * automaticamente (`migrateLocalToDb` chamado depois do login bem-sucedido).
  */
 
-import { getJwtToken, isAuthConfigured } from "./auth-client";
+import { useEffect } from "react";
+import { getJwtToken, isAuthConfigured, useNeonSession } from "./auth-client";
 import type { AdaptResponse } from "./types";
 
 const STORAGE_KEY = "rv:scripts:v1";
 const MAX_ENTRIES = 50;
+const MIGRATION_FLAG_KEY = "rv:migration:done";
+
+/**
+ * Pega JWT com retry. Race condition conhecida: depois de AuthDialog.onSuccess,
+ * o Better Auth client cache pode demorar 100-500ms pra refletir o session
+ * novo. Sem retry, getJwtToken() retorna null e o save cai pra localStorage
+ * — mesmo o user estando logado. Bug invisível: scripts sumiam de "Meus roteiros".
+ */
+async function getJwtTokenWithRetry(
+  maxAttempts = 4,
+  delayMs = 400,
+): Promise<string | null> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const token = await getJwtToken();
+    if (token) return token;
+    if (i < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return null;
+}
 
 export interface SavedScript {
   id: string;
@@ -60,9 +82,9 @@ export async function saveScript(
 ): Promise<SavedScript | null> {
   if (!isClient()) return null;
 
-  // Tenta DB se logado
+  // Tenta DB se logado (com retry pro JWT — race condition pós-login)
   if (isAuthConfigured()) {
-    const token = await getJwtToken();
+    const token = await getJwtTokenWithRetry();
     if (token) {
       try {
         const res = await fetch("/api/scripts", {
@@ -82,9 +104,12 @@ export async function saveScript(
             data,
           };
         }
+        console.warn("[rv:storage] DB save returned non-OK:", res.status);
       } catch (err) {
         console.warn("[rv:storage] DB save failed, falling back local:", err);
       }
+    } else {
+      console.warn("[rv:storage] auth configured but no JWT após retry — fallback local");
     }
   }
 
@@ -239,4 +264,32 @@ export async function migrateLocalToDb(): Promise<{ migrated: number; failed: nu
   // Se migrou tudo, limpa local pra evitar duplicação na próxima session.
   if (failed === 0) clearAllScripts();
   return { migrated, failed };
+}
+
+/**
+ * Hook que detecta login (session muda de null → user) e dispara
+ * `migrateLocalToDb` automaticamente. Idempotente — usa flag em
+ * sessionStorage pra rodar 1x por session/user.
+ *
+ * Plugar em layouts client (ex: `app/app/layout.tsx`) cobre TODOS os
+ * caminhos de login (AuthBar, AuthDialog landing, AuthDialog /app, OAuth
+ * callback) sem precisar lembrar de chamar migrate em cada onSuccess.
+ *
+ * Adicionado 2026-05-02 — antes só o `auth-bar.tsx` chamava migrate, então
+ * users que logavam via AuthDialog (caminho mais comum) perdiam o histórico
+ * anônimo silenciosamente.
+ */
+export function useLoginMigration(): void {
+  const session = useNeonSession();
+  const userId = session.data?.user?.id;
+
+  useEffect(() => {
+    if (!userId || !isClient()) return;
+    const flag = sessionStorage.getItem(MIGRATION_FLAG_KEY);
+    if (flag === userId) return;
+    sessionStorage.setItem(MIGRATION_FLAG_KEY, userId);
+    void migrateLocalToDb().catch((err) =>
+      console.warn("[rv:storage] auto-migrate falhou:", err),
+    );
+  }, [userId]);
 }
