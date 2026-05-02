@@ -54,18 +54,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  // Idempotência: registra event.id e descarta se Stripe retransmitir.
-  // INSERT ... ON CONFLICT DO NOTHING + RETURNING garante atomicidade.
-  // Requer migration que cria stripe_webhook_events (id text PK, type text,
-  // app text, created_at timestamptz default now()).
+  // Idempotência: dedup precisa rodar DEPOIS do handler ter sucesso.
+  // Pattern: SELECT primeiro pra detectar replay. Se já processado,
+  // ack 200 e pula. Se novo, executa handler. Só insere o registro de
+  // dedup após handler retornar OK — assim se handler throw, Stripe
+  // retry vê o evento como novo e tenta de novo limpo.
+  let dbAvailable = true;
   try {
-    const inserted = (await getSql()`
-      INSERT INTO stripe_webhook_events (id, type, app)
-      VALUES (${event.id}, ${event.type}, ${STRIPE_APP_TAG})
-      ON CONFLICT (id) DO NOTHING
-      RETURNING id
-    `) as Array<{ id: string }>;
-    if (!inserted || inserted.length === 0) {
+    const existing = (await getSql()`
+      SELECT 1 FROM stripe_webhook_events WHERE id = ${event.id} LIMIT 1
+    `) as Array<unknown>;
+    if (existing && existing.length > 0) {
       // Já processado anteriormente — ack e sai.
       return NextResponse.json({ received: true, dedup: true });
     }
@@ -73,6 +72,7 @@ export async function POST(req: Request) {
     // Tabela pode não existir ainda (migration pendente) — não bloqueia
     // produção, mas avisa. Idempotência fica best-effort.
     console.warn("[webhook] dedup table miss:", err);
+    dbAvailable = false;
   }
 
   try {
@@ -90,12 +90,32 @@ export async function POST(req: Request) {
         // Eventos não relevantes (invoice.*, etc) — ignora silenciosamente
         break;
     }
+
+    // Handler OK → registra event.id pra dedup futuro.
+    // ON CONFLICT DO NOTHING garante idempotência mesmo em race com
+    // outro handler concorrente (ex: Stripe retry sobreposto).
+    if (dbAvailable) {
+      try {
+        await getSql()`
+          INSERT INTO stripe_webhook_events (id, type, app)
+          VALUES (${event.id}, ${event.type}, ${STRIPE_APP_TAG})
+          ON CONFLICT (id) DO NOTHING
+        `;
+      } catch (err) {
+        // Falha aqui é tolerável: handler já completou. Pior caso
+        // Stripe retransmite e o handler reprocessa idempotentemente
+        // (UPSERT em user_subscriptions).
+        console.warn("[webhook] dedup write failed:", err);
+      }
+    }
+
     return NextResponse.json({ received: true });
   } catch (err) {
-    // Retorna 500 pra Stripe retentar — handler error em
-    // checkout/subscription.* significa que o estado do user no DB pode
-    // estar inconsistente. Stripe faz retry exponencial até 3 dias, dando
-    // janela pra recuperar de falhas transitórias de Neon/Resend.
+    // Retorna 500 SEM gravar o dedup — Stripe retry vai tentar de novo
+    // limpo. Handler error em checkout/subscription.* significa que o
+    // estado do user no DB pode estar inconsistente. Stripe faz retry
+    // exponencial até 3 dias, dando janela pra recuperar de falhas
+    // transitórias de Neon/Resend.
     console.error("[webhook] handler error:", err, "event:", event.type);
     return NextResponse.json(
       { error: "handler failed", eventId: event.id },
