@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Instrument_Serif, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import { Footer } from "@/components/footer";
+import { MetaPixel } from "@/components/MetaPixel";
 import "./globals.css";
 
 const sans = Plus_Jakarta_Sans({
@@ -74,6 +75,7 @@ export default function RootLayout({
           minHeight: "100dvh",
         }}
       >
+        <MetaPixel pixelId="1708595326965933" />
         {children}
         <Footer />
         <Toaster
