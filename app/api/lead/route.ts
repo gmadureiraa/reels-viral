@@ -35,7 +35,7 @@ const BodySchema = z.object({
   sourceUrl: z.string().url().optional(),
   objetivo: z.enum(["leads", "produto", "seguidores", "engajamento"]).optional(),
   tema: z.string().max(280).optional(),
-  consentMarketing: z.boolean().default(true),
+  consentMarketing: z.boolean(),
 });
 
 export async function POST(req: Request) {
@@ -127,8 +127,8 @@ export async function POST(req: Request) {
     try {
       const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://reels.kaleidos.com.br";
       const scriptUrl = parsed.scriptId
-        ? `${SITE}/meus-roteiros/${parsed.scriptId}`
-        : `${SITE}/meus-roteiros`;
+        ? `${SITE}/app/meus-roteiros/${parsed.scriptId}`
+        : `${SITE}/app/meus-roteiros`;
       const resend = new Resend(process.env.RESEND_API_KEY);
       const tpl = welcomeEmail({
         firstName: parsed.firstName ?? null,

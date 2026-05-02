@@ -192,7 +192,7 @@ function ScriptCard({
   });
   return (
     <Link
-      href={`/meus-roteiros/${script.id}`}
+      href={`/app/meus-roteiros/${script.id}`}
       style={{
         display: "block",
         background: "var(--color-rv-cream)",
