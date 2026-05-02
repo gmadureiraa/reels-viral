@@ -269,7 +269,10 @@ export async function POST(req: Request) {
       durationSeconds: geminiSeconds,
       outputTokens: outputTokensEstimate,
     });
-    void logUsage({
+    // AWAIT (não void) — o counter da quota é baseado em ai_usage.
+    // Sem await, o INSERT pode rodar DEPOIS de o user disparar a próxima
+    // request, abrindo brecha pra furar paywall. Aceita o ~30ms extra.
+    await logUsage({
       userId,
       scriptId: null,
       provider: "gemini",

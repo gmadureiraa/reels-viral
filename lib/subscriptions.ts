@@ -85,16 +85,45 @@ export async function getUserSubscription(
  * Conta quantos reels o user gerou no mês corrente (calendar month).
  * Idealmente usaríamos current_period_start/end pra alinhar com Stripe,
  * mas pra MVP calendar month é simples e suficiente.
+ *
+ * Conta gerações REAIS (Gemini chamado com sucesso) via `ai_usage`, não
+ * `scripts`. Motivo: o save em `scripts` depende do client chamar
+ * /api/scripts depois (storage.ts via ResultView mount). Se o user fecha
+ * a aba, perde rede, ou cai pro localStorage anônimo, o counter NÃO
+ * incrementa e o paywall pode ser furado bombando /api/adapt-reel.
+ *
+ * `ai_usage` é populado server-side dentro do próprio /api/adapt-reel
+ * imediatamente após Gemini retornar com sucesso, então é a fonte de
+ * verdade pra "user gerou um reel" independente do que aconteça depois.
+ *
+ * Fallback: se `ai_usage` falhar ou tabela não existir, usa `scripts`.
  */
 export async function countReelsThisMonth(userId: string): Promise<number> {
   const sql = getSql();
-  const rows = (await sql`
-    SELECT COUNT(*)::int AS n
-      FROM scripts
-     WHERE user_id = ${userId}
-       AND created_at >= date_trunc('month', NOW())
-  `) as Array<{ n: number }>;
-  return rows[0]?.n ?? 0;
+  try {
+    const rows = (await sql`
+      SELECT COUNT(*)::int AS n
+        FROM ai_usage
+       WHERE user_id = ${userId}
+         AND provider = 'gemini'
+         AND operation = 'analyze_reel'
+         AND success = true
+         AND created_at >= date_trunc('month', NOW())
+    `) as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
+  } catch (err) {
+    console.warn(
+      "[subscriptions] count via ai_usage falhou, fallback scripts:",
+      err,
+    );
+    const rows = (await sql`
+      SELECT COUNT(*)::int AS n
+        FROM scripts
+       WHERE user_id = ${userId}
+         AND created_at >= date_trunc('month', NOW())
+    `) as Array<{ n: number }>;
+    return rows[0]?.n ?? 0;
+  }
 }
 
 export interface QuotaStatus {
