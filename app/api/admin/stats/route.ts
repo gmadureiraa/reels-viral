@@ -172,22 +172,40 @@ export async function GET(req: Request) {
   `) as ProviderBreakdownRow[];
 
   // ── Top users (top 50 por geração no mês) ──────────────────────
+  // IMPORTANTE: usar correlated subqueries em vez de JOIN com GROUP BY.
+  // O JOIN scripts × ai_usage gera produto cartesiano antes do GROUP,
+  // multiplicando COUNT(scripts) e SUM(cost_usd) por linhas duplicadas.
+  // Pattern: agrega em scripts e ai_usage separadamente por user, joga
+  // o resultado por user_id, depois LEFT JOIN só com user_subscriptions
+  // (1:1, sem cartesiano).
   const usersRows = (await sql`
-    SELECT s.user_id,
-           COUNT(*)::int AS reels_total,
-           SUM(CASE WHEN s.created_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END)::int AS reels_30d,
-           COALESCE(SUM(au.cost_usd), 0)::float AS cost_usd,
-           MAX(s.created_at)::text AS last_at,
+    SELECT s_agg.user_id,
+           s_agg.reels_total,
+           s_agg.reels_30d,
+           COALESCE(au_agg.cost_usd, 0)::float AS cost_usd,
+           s_agg.last_at::text AS last_at,
            sub.plan,
            sub.status,
            sub.current_period_end::text AS current_period_end,
            sub.stripe_customer_id
-      FROM scripts s
-      LEFT JOIN ai_usage au ON au.user_id = s.user_id
-      LEFT JOIN user_subscriptions sub ON sub.user_id = s.user_id
-     WHERE s.user_id IS NOT NULL
-     GROUP BY s.user_id, sub.plan, sub.status, sub.current_period_end, sub.stripe_customer_id
-     ORDER BY reels_30d DESC
+      FROM (
+        SELECT user_id,
+               COUNT(*)::int AS reels_total,
+               SUM(CASE WHEN created_at >= NOW() - INTERVAL '30 days' THEN 1 ELSE 0 END)::int AS reels_30d,
+               MAX(created_at) AS last_at
+          FROM scripts
+         WHERE user_id IS NOT NULL
+         GROUP BY user_id
+      ) s_agg
+      LEFT JOIN (
+        SELECT user_id,
+               SUM(cost_usd)::float AS cost_usd
+          FROM ai_usage
+         WHERE user_id IS NOT NULL
+         GROUP BY user_id
+      ) au_agg ON au_agg.user_id = s_agg.user_id
+      LEFT JOIN user_subscriptions sub ON sub.user_id = s_agg.user_id
+     ORDER BY s_agg.reels_30d DESC
      LIMIT 50
   `) as AdminUserRow[];
 
