@@ -51,6 +51,12 @@ export const metadata: Metadata = {
       "Cole um Reel. Recebe um roteiro novo cena por cena, na sua voz.",
     creator: "@madureira",
   },
+  // Facebook domain verification — pareia com Pixel 1708595326965933 no
+  // Madureira BM (704738313932684). Atribui reels.kaleidos.com.br ao BM.
+  // Necessário pra Aggregated Event Measurement (iOS 14+).
+  other: {
+    "facebook-domain-verification": "csf0msjkmwxo95330m142xec4t1g2a",
+  },
 };
 
 export const viewport: Viewport = {
