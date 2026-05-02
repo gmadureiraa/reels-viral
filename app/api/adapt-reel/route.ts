@@ -169,8 +169,13 @@ export async function POST(req: Request) {
         );
       }
     } catch (err) {
-      // Best-effort: se a tabela ainda não existe ou DB falha, não bloqueia.
-      console.warn("[adapt-reel] quota check skipped:", err);
+      // Failsafe: se Neon cair ou tabela ainda não existir, NÃO bloqueia
+      // user logado pelo cost-guard tratando como anon. User logged-in
+      // assume paid ("trust but log") — pior caso é free user passar uma
+      // vez no kill switch global, infinitamente melhor que bloquear quem
+      // pagou. Anon nunca chega aqui (userId=null pula esse bloco).
+      console.warn("[adapt-reel] sub fetch failed, failsafe paid:", err);
+      isPaidUser = true;
     }
   }
 
