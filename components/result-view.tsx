@@ -21,6 +21,7 @@ import { formatDuration, formatNumber } from "@/lib/utils";
 import { downloadMarkdown } from "@/lib/export-markdown";
 import { openSvBridge } from "@/lib/sv-bridge";
 import { saveScript } from "@/lib/storage";
+import { Teleprompter } from "@/components/teleprompter";
 
 const PAPEL_LABELS: Record<Scene["papel"], string> = {
   hook: "HOOK",
@@ -52,6 +53,7 @@ export function ResultView({
   const { source, analysis, script, durationMs } = data;
   const [copied, setCopied] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [teleprompterOpen, setTeleprompterOpen] = useState(false);
 
   // Auto-save assim que monta — DB se logado, localStorage anônimo.
   useEffect(() => {
@@ -477,16 +479,33 @@ export function ResultView({
 
         {/* Roteiro completo */}
         <div className="mt-6">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <div className="rv-eyebrow">ROTEIRO COMPLETO · TEXTO CORRIDO</div>
-            <button
-              onClick={() => handleCopy("Roteiro", script.roteiroCompleto)}
-              className="rv-btn"
-              style={{ padding: "8px 12px", fontSize: 9 }}
-            >
-              {copied === "Roteiro" ? <Check size={12} /> : <Copy size={12} />}
-              {copied === "Roteiro" ? "Copiado" : "Copiar tudo"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setTeleprompterOpen(true)}
+                className="rv-btn"
+                style={{
+                  padding: "8px 12px",
+                  fontSize: 9,
+                  background: "var(--color-rv-rec)",
+                  color: "white",
+                  boxShadow: "2px 2px 0 0 var(--color-rv-ink)",
+                }}
+                aria-label="Abrir teleprompter"
+              >
+                <Play size={12} />
+                Teleprompter
+              </button>
+              <button
+                onClick={() => handleCopy("Roteiro", script.roteiroCompleto)}
+                className="rv-btn"
+                style={{ padding: "8px 12px", fontSize: 9 }}
+              >
+                {copied === "Roteiro" ? <Check size={12} /> : <Copy size={12} />}
+                {copied === "Roteiro" ? "Copiado" : "Copiar tudo"}
+              </button>
+            </div>
           </div>
           <pre
             style={{
@@ -614,6 +633,13 @@ export function ResultView({
           <RotateCcw size={14} /> Adaptar outro reel
         </button>
       </div>
+
+      {/* Teleprompter modal — full-screen overlay com auto-scroll */}
+      <Teleprompter
+        text={script.roteiroCompleto}
+        open={teleprompterOpen}
+        onClose={() => setTeleprompterOpen(false)}
+      />
     </div>
   );
 }
