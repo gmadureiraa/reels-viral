@@ -93,39 +93,68 @@ const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
  * Rejeita vídeos > 50MB (via Content-Length header quando presente, ou
  * checagem após download). Sem essa proteção, um vídeo malicioso de
  * centenas de MB derrubaria a função serverless por OOM.
+ *
+ * Retry: 1 retry com backoff em 5xx/network error. IG CDN tem
+ * intermitência ocasional (~2% req falham com 503/504 no primeiro try)
+ * e o user paga 30s+ se falhar definitivo. 2 tentativas resolvem ~99%.
  */
 export async function downloadReelVideo(
   videoUrl: string
 ): Promise<ArrayBuffer> {
-  const res = await fetch(videoUrl, {
-    signal: AbortSignal.timeout(60_000),
-  });
-  if (!res.ok) {
-    throw new ApifyError(`Falha ao baixar vídeo: ${res.status}`, true);
-  }
+  const MAX_ATTEMPTS = 2;
+  let lastErr: Error | null = null;
 
-  // Pré-check via Content-Length quando disponível (IG CDN sempre envia).
-  const contentLength = res.headers.get("content-length");
-  if (contentLength) {
-    const bytes = Number(contentLength);
-    if (Number.isFinite(bytes) && bytes > MAX_VIDEO_BYTES) {
-      throw new ApifyError(
-        `Vídeo grande demais (${(bytes / 1024 / 1024).toFixed(0)}MB > ${MAX_VIDEO_BYTES / 1024 / 1024}MB). Reels de até ${MAX_VIDEO_BYTES / 1024 / 1024}MB são suportados.`,
-        false
-      );
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await fetch(videoUrl, {
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) {
+        // 4xx é erro permanente (URL expirou / inválida); 5xx é retryable
+        const retryable = res.status >= 500;
+        if (!retryable || attempt === MAX_ATTEMPTS) {
+          throw new ApifyError(`Falha ao baixar vídeo: ${res.status}`, retryable);
+        }
+        lastErr = new Error(`HTTP ${res.status}`);
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+        continue;
+      }
+
+      // Pré-check via Content-Length quando disponível (IG CDN sempre envia).
+      const contentLength = res.headers.get("content-length");
+      if (contentLength) {
+        const bytes = Number(contentLength);
+        if (Number.isFinite(bytes) && bytes > MAX_VIDEO_BYTES) {
+          throw new ApifyError(
+            `Vídeo grande demais (${(bytes / 1024 / 1024).toFixed(0)}MB > ${MAX_VIDEO_BYTES / 1024 / 1024}MB). Reels de até ${MAX_VIDEO_BYTES / 1024 / 1024}MB são suportados.`,
+            false
+          );
+        }
+      }
+
+      const buffer = await res.arrayBuffer();
+
+      // Defesa em profundidade: alguns CDNs omitem Content-Length em chunked
+      // responses. Verificamos o tamanho real após download.
+      if (buffer.byteLength > MAX_VIDEO_BYTES) {
+        throw new ApifyError(
+          `Vídeo baixado ultrapassou limite (${(buffer.byteLength / 1024 / 1024).toFixed(0)}MB).`,
+          false
+        );
+      }
+
+      return buffer;
+    } catch (err) {
+      // ApifyError com retryable=false → não retry (cap exceeded, 4xx)
+      if (err instanceof ApifyError && !err.retryable) throw err;
+      lastErr = err as Error;
+      if (attempt === MAX_ATTEMPTS) break;
+      await new Promise((r) => setTimeout(r, 600 * attempt));
     }
   }
 
-  const buffer = await res.arrayBuffer();
-
-  // Defesa em profundidade: alguns CDNs omitem Content-Length em chunked
-  // responses. Verificamos o tamanho real após download.
-  if (buffer.byteLength > MAX_VIDEO_BYTES) {
-    throw new ApifyError(
-      `Vídeo baixado ultrapassou limite (${(buffer.byteLength / 1024 / 1024).toFixed(0)}MB).`,
-      false
-    );
-  }
-
-  return buffer;
+  throw new ApifyError(
+    `Falha ao baixar vídeo após ${MAX_ATTEMPTS} tentativas: ${lastErr?.message ?? "desconhecido"}`,
+    true,
+  );
 }

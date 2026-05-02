@@ -16,11 +16,54 @@
 // novo unificado). Mesma capacidade de inlineData + Files API. SV já roda
 // nesse SDK em prod — paridade entre produtos do combo.
 import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
 import type {
   AdaptBrief,
   AdaptedScript,
   SourceAnalysis,
 } from "./types";
+
+// Schema Zod pra validar shape do JSON do Gemini ANTES de retornar.
+// responseSchema do Gemini é guidance, não enforcement — modelo às vezes
+// devolve campo missing/null. Sem essa validação, o client recebe JSON
+// "ok" e quebra com TypeError no ResultView ao acessar campo nested
+// undefined.
+const TextoTempoSchema = z.object({
+  texto: z.string(),
+  tempo: z.string(),
+});
+
+const SceneSchema = z.object({
+  n: z.number().int(),
+  tempo: z.string(),
+  papel: z.enum(["hook", "promessa", "demo", "prova", "transicao", "cta"]),
+  visual: z.string(),
+  copy: z.string(),
+  broll: z.string().optional(),
+});
+
+const AdaptResultSchema = z.object({
+  analysis: z.object({
+    resumo: z.string(),
+    porQueViralizou: z.array(z.string()),
+    estrutura: z.object({
+      hook: TextoTempoSchema,
+      promessa: TextoTempoSchema,
+      demonstracao: TextoTempoSchema,
+      provaSocial: TextoTempoSchema,
+      cta: TextoTempoSchema,
+    }),
+    padroesTransferiveis: z.array(z.string()),
+  }),
+  script: z.object({
+    titulo: z.string(),
+    hook: z.string(),
+    roteiroCompleto: z.string(),
+    scenes: z.array(SceneSchema).min(4),
+    captionSugerida: z.string(),
+    notasProducao: z.array(z.string()),
+  }),
+});
 
 const MODEL_ID = "gemini-2.5-flash";
 /** Limite oficial do Gemini pra inlineData. Acima usa File API. */
@@ -347,23 +390,27 @@ Devolva APENAS o JSON no schema fornecido. Sem prefácio, sem markdown.`;
   });
 
   const text = result.text ?? "";
-  let parsed: AdaptResult;
+  let parsedJson: unknown;
   try {
-    parsed = JSON.parse(text);
+    parsedJson = JSON.parse(text);
   } catch {
     throw new Error(
       `Gemini retornou JSON inválido (${text.length} chars): ${text.slice(0, 200)}`
     );
   }
 
-  // Sanity check: scenes tem que ter ao menos 4
-  if (!parsed.script?.scenes || parsed.script.scenes.length < 4) {
+  // Validação shape via Zod. Sem isso, JSON tipo `{analysis:null,script:{}}`
+  // (que acontece em ~1% das gerações) passa e quebra o ResultView.
+  const validation = AdaptResultSchema.safeParse(parsedJson);
+  if (!validation.success) {
+    const firstIssue = validation.error.issues[0];
+    const path = firstIssue.path.join(".");
     throw new Error(
-      `Roteiro com poucas cenas (${parsed.script?.scenes?.length ?? 0})`
+      `Gemini retornou shape inválido em ${path}: ${firstIssue.message}. Tenta de novo — modelo eventualmente erra o schema.`,
     );
   }
 
-  return parsed;
+  return validation.data as AdaptResult;
 }
 
 function labelObjetivo(o: AdaptBrief["objetivo"]): string {
