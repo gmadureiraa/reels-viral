@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthClient } from "@/lib/auth-client";
+import { trackLead } from "@/lib/meta-pixel";
 
 type Mode = "signin" | "signup";
 
@@ -46,6 +47,11 @@ export function AuthDialog({
         throw new Error(res.error.message || "Falha no Google");
       }
       // Se chegou aqui sem redirect, a sessão já foi setada — sucesso direto.
+      // Lead pixel: só dispara em signup (mode default ao abrir o dialog).
+      // Quirk: Google OAuth não diferencia signup de signin; se user já
+      // tinha conta o Lead pode disparar em re-login. Aceitável — Pixel
+      // dedupe e attribution windows tratam isso.
+      if (mode === "signup") trackLead("free_signup_google");
       onSuccess();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Google indisponível");
@@ -70,6 +76,8 @@ export function AuthDialog({
       if (res.error) {
         throw new Error(res.error.message || "Erro de auth");
       }
+      // Lead pixel: só em signup, não em signin.
+      if (mode === "signup") trackLead("free_signup_email");
       onSuccess();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha");

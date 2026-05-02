@@ -33,6 +33,8 @@ import {
 import { isValidInstagramUrl } from "@/lib/utils";
 import { useNeonSession } from "@/lib/auth-client";
 import { AuthDialog } from "@/components/auth-dialog";
+import { trackSubscribe } from "@/lib/meta-pixel";
+import { PLANS_RV, type PlanId } from "@/lib/pricing";
 
 const PENDING_FORM_KEY = "rv_pending_brief";
 
@@ -58,6 +60,34 @@ function LandingPageInner() {
   useEffect(() => {
     if (searchParams.get("login") === "required") {
       setShowAuthDialog(true);
+    }
+  }, [searchParams]);
+
+  // Stripe success → dispara Subscribe pixel + limpa URL pra não duplicar
+  // em refresh. Roda antes do redirect-pra-/app (que tbm reage ao session
+  // user) — usar sessionStorage como fence em caso do redirect ser mais rápido.
+  useEffect(() => {
+    if (searchParams.get("payment") !== "success") return;
+    const planParam = searchParams.get("plan");
+    const FENCE_KEY = "rv_subscribe_fired";
+    try {
+      if (sessionStorage.getItem(FENCE_KEY)) return;
+      sessionStorage.setItem(FENCE_KEY, "1");
+    } catch {
+      /* sessionStorage indisponível, deixa rolar */
+    }
+    if (planParam && planParam in PLANS_RV) {
+      const plan = PLANS_RV[planParam as PlanId];
+      // priceMonthly em centavos BRL → converte pra unidade real (R$).
+      trackSubscribe(plan.priceMonthly / 100, planParam);
+    }
+    // Limpa URL pra evitar re-fire em refresh (mesmo com fence acima é
+    // melhor não deixar o param persistente).
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("payment");
+      url.searchParams.delete("plan");
+      window.history.replaceState({}, "", url.toString());
     }
   }, [searchParams]);
 

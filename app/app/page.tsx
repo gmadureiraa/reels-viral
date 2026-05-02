@@ -29,6 +29,7 @@ import { LoadingPipeline } from "@/components/loading-pipeline";
 import { AuthDialog } from "@/components/auth-dialog";
 import { QuotaBlockedModal } from "@/components/quota-blocked-modal";
 import { useNeonSession, getJwtToken } from "@/lib/auth-client";
+import { trackCompleteRegistration } from "@/lib/meta-pixel";
 
 const OBJETIVOS: Array<{
   id: AdaptBrief["objetivo"];
@@ -226,6 +227,18 @@ export default function Home() {
       }
       setResult(data as AdaptResponse);
       setStep("result");
+      // CompleteRegistration: dispara só na primeira adaptação bem-sucedida.
+      // Flag local persistente — sobrevive a logout, mas é por device.
+      // Aceitável: queremos sinal de "user ativado", não unique por user.
+      try {
+        const FIRST_REEL_FLAG = "rv_first_reel_tracked";
+        if (!localStorage.getItem(FIRST_REEL_FLAG)) {
+          trackCompleteRegistration("first_reel");
+          localStorage.setItem(FIRST_REEL_FLAG, "1");
+        }
+      } catch {
+        /* localStorage bloqueado — pula tracking */
+      }
     } catch (err) {
       const isAbort =
         err instanceof Error &&
