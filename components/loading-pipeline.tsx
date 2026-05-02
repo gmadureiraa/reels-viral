@@ -3,13 +3,19 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
-const STAGES = [
+type Stage = { label: string; duration: number | null };
+
+const STAGES: Stage[] = [
   { label: "Puxando o reel via Apify", duration: 6_500 },
   { label: "Baixando o vídeo do CDN", duration: 4_500 },
   { label: "Subindo pro Gemini", duration: 5_000 },
   { label: "Transcrevendo o áudio", duration: 8_000 },
   { label: "Disseccando estrutura", duration: 6_000 },
   { label: "Adaptando ao seu briefing", duration: 8_000 },
+  // Última fase: duration:null → loop infinito de pulse até o response
+  // chegar e o componente desmontar. Evita o problema de a fase anterior
+  // ficar "ativa" forever quando a geração passa de 38s.
+  { label: "Finalizando…", duration: null },
 ];
 
 export function LoadingPipeline() {
@@ -17,10 +23,9 @@ export function LoadingPipeline() {
 
   useEffect(() => {
     if (stage >= STAGES.length - 1) return;
-    const t = setTimeout(
-      () => setStage((s) => s + 1),
-      STAGES[stage].duration
-    );
+    const dur = STAGES[stage].duration;
+    if (dur === null) return; // não avança se duration null (último stage)
+    const t = setTimeout(() => setStage((s) => s + 1), dur);
     return () => clearTimeout(t);
   }, [stage]);
 
