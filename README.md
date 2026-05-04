@@ -92,8 +92,28 @@ SOFT_DAILY_CAP_USD=20                # ex: $20/dia. Free + anon bloqueados
 ```bash
 DATABASE_URL=<prod> bun scripts/migrate.ts
 # Cria tabelas: scripts, scrape_cache, leads, user_subscriptions,
-# library_reels, ai_usage. Idempotente.
+# library_reels, ai_usage, stripe_webhook_events. Idempotente.
 ```
+
+> **⚠️ ai_usage em prod (audit 2026-05-02):** se `ai_usage` não existir
+> no Neon prod, `countReelsThisMonth()` em `lib/subscriptions.ts` cai
+> pro fallback `scripts` — que é incrementado client-side e pode ser
+> furado fechando a aba antes do save. **Resultado: paywall vazado.**
+>
+> Verificar prod (one-shot):
+>
+> ```bash
+> # Pega DATABASE_URL de prod do Vercel
+> vercel env pull .env.production --environment=production
+>
+> # Confirma que ai_usage existe + tem indexes
+> bun --env-file=.env.production scripts/migrate.ts
+> ```
+>
+> Output esperado: `[migrate] ✓ ai_usage` + `[migrate] ✓ ai_usage indexes`.
+> Se aparecer `tabelas no schema public` listando `ai_usage`, está OK.
+> Se der erro de permissão, rodar SQL direto no Neon SQL editor copiando
+> o bloco `CREATE TABLE IF NOT EXISTS ai_usage (...)` de `scripts/migrate.ts`.
 
 ### Stripe webhook
 
