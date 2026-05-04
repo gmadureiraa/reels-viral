@@ -237,7 +237,10 @@ export function clearAllScripts(): void {
  */
 export async function migrateLocalToDb(): Promise<{ migrated: number; failed: number }> {
   if (!isClient() || !isAuthConfigured()) return { migrated: 0, failed: 0 };
-  const token = await getJwtToken();
+  // Usa retry: pós-login, JWT pode demorar >1.6s pra ficar disponível no
+  // Better Auth client cache. Sem retry, retorna null silenciosamente e a
+  // flag de migration é setada — perdendo o histórico anônimo pra sempre.
+  const token = await getJwtTokenWithRetry();
   if (!token) return { migrated: 0, failed: 0 };
 
   const local = localList();
