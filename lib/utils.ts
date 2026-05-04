@@ -7,11 +7,13 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * Extrai o shortCode de uma URL do Instagram.
- * Suporta /p/, /reel/, /reels/, com ou sem trailing slash.
+ * Aceita SOMENTE /reel/ e /reels/ (rejeita /p/ carrossel e /tv/ igtv pra
+ * não queimar 1 hit Apify antes do guard `item.type !== "Video"` rejeitar).
+ * Suporta com ou sem trailing slash, com ou sem segmento de username.
  */
 export function extractShortCode(url: string): string | null {
   const match = url.match(
-    /instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/
+    /instagram\.com\/(?:[^\/]+\/)?reels?\/([A-Za-z0-9_-]+)/
   );
   return match ? match[1] : null;
 }
