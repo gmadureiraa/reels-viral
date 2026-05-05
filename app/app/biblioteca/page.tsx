@@ -760,7 +760,7 @@ export default function LibraryPage() {
                     }}
                   >
                     {reels.length}+ reels virais com transcript, análise e
-                    template mapeado. Disponível no plano Basic (R$ 14,90/mês).
+                    template mapeado. Disponível no plano Pro (R$ 14,90/mês).
                   </p>
                   <Link
                     href="/app/precos"

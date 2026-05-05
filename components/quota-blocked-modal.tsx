@@ -119,7 +119,7 @@ export function QuotaBlockedModal({
             gap: 10,
           }}
         >
-          <Row label="Basic" price="R$ 14,90/mês" detail="30 reels + biblioteca" />
+          <Row label="Pro" price="R$ 14,90/mês" detail="30 reels + biblioteca" />
           <div style={{ height: 1, background: "var(--color-rv-line)" }} />
           <Row label="Max" price="R$ 49,90/mês" detail="100 reels + tudo" />
         </div>

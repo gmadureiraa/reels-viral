@@ -26,7 +26,10 @@ export const PLANS_RV = {
     ],
   },
   basic: {
-    name: "Basic",
+    // Display "Pro" (padronização cross-app: Radar+SV+RV usam free/pro/max).
+    // DB key permanece 'basic' por legado pra não quebrar subs ativos no
+    // Stripe — conversão de display só.
+    name: "Pro",
     priceMonthly: 1490, // R$ 14,90 em centavos BRL
     priceAnchor: 2990, // âncora visual
     reelsPerMonth: 30,
