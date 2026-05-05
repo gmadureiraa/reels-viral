@@ -32,7 +32,7 @@ export function Footer() {
             color: "var(--color-rv-ink)",
           }}
         >
-          Reels Viral · Kaleidos
+          Reels Viral · by Kaleidos Digital
         </div>
 
         <nav

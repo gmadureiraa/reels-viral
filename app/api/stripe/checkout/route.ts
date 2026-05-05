@@ -119,7 +119,7 @@ export async function POST(req: Request) {
           price_data: {
             currency: "brl",
             product_data: {
-              name: `Reels Viral ${plan.name}`,
+              name: `Reels Viral — ${plan.name} by Kaleidos Digital`,
               description: plan.features.slice(0, 4).join(" · "),
             },
             unit_amount: plan.priceMonthly,
