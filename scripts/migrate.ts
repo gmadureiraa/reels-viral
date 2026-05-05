@@ -241,6 +241,80 @@ async function main() {
   `);
   console.log("[migrate] ✓ stripe_webhook_events");
 
+  // ────────────────────────────────────────────────────────────────────
+  // library_reels: cache de transcrição + análise pra evitar refazer
+  // Gemini cada vez que um user paid clica num reel da biblioteca.
+  // ────────────────────────────────────────────────────────────────────
+  await sql.query(`
+    ALTER TABLE library_reels
+      ADD COLUMN IF NOT EXISTS transcript TEXT,
+      ADD COLUMN IF NOT EXISTS analysis_json JSONB,
+      ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS source_idea_id UUID,
+      ADD COLUMN IF NOT EXISTS scene_frames JSONB
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS library_reels_source_idea_idx
+      ON library_reels (source_idea_id) WHERE source_idea_id IS NOT NULL
+  `);
+  console.log("[migrate] ✓ library_reels: transcript + analysis_json + analyzed_at + source_idea_id");
+
+  // ────────────────────────────────────────────────────────────────────
+  // library_ideas: pautas/prompts de conteúdo (importadas do Notion
+  // "100 Ideias pra viralizar" da Kaleidos). Diferente de library_reels
+  // (que são reels reais com vídeo) — esses são apenas títulos/prompts.
+  // ────────────────────────────────────────────────────────────────────
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS library_ideas (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      notion_id TEXT UNIQUE,
+      position INTEGER NOT NULL DEFAULT 0,
+      title TEXT NOT NULL,
+      formato TEXT,
+      tipo TEXT,
+      piramide TEXT,
+      featured BOOLEAN NOT NULL DEFAULT FALSE,
+      source TEXT NOT NULL DEFAULT 'kaleidos-100',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Adiciona campos de enriquecimento (search_url, exemplos, how_to_adapt)
+  // — extraídos dos children blocks da página Notion via loadPageChunk.
+  await sql.query(`
+    ALTER TABLE library_ideas
+      ADD COLUMN IF NOT EXISTS search_query TEXT,
+      ADD COLUMN IF NOT EXISTS search_url TEXT,
+      ADD COLUMN IF NOT EXISTS example_urls JSONB,
+      ADD COLUMN IF NOT EXISTS how_to_adapt TEXT,
+      ADD COLUMN IF NOT EXISTS enriched_at TIMESTAMPTZ
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS library_ideas_position_idx
+    ON library_ideas (position)
+  `);
+  console.log("[migrate] ✓ library_ideas");
+
+  // ────────────────────────────────────────────────────────────────────
+  // user_profiles: perfil do criador pra adaptação contextualizada.
+  // O @ Instagram + nicho + persona alimentam o prompt do Gemini quando
+  // o user clica "Pegar pro meu perfil" num reel da biblioteca.
+  // ────────────────────────────────────────────────────────────────────
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS user_profiles (
+      user_id TEXT PRIMARY KEY,
+      ig_handle TEXT,
+      nicho TEXT,
+      persona TEXT,
+      objetivo_padrao TEXT,
+      cta_padrao TEXT,
+      bio_curta TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  console.log("[migrate] ✓ user_profiles");
+
   // Sanity: lista as tabelas criadas no schema public.
   const rows = await sql.query(`
     SELECT table_name FROM information_schema.tables

@@ -3,6 +3,7 @@
   "framework": "nextjs",
   "functions": {
     "app/api/adapt-reel/route.ts": { "maxDuration": 60 },
+    "app/api/library/[id]/route.ts": { "maxDuration": 60 },
     "app/api/scripts/route.ts": { "maxDuration": 10 },
     "app/api/scripts/[id]/route.ts": { "maxDuration": 10 },
     "app/api/lead/route.ts": { "maxDuration": 15 },

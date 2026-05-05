@@ -23,6 +23,7 @@ import {
   Menu,
   X,
   CreditCard,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import {
   useNeonSession,
@@ -43,6 +44,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app", label: "Adaptar reel", icon: PlusCircle },
   { href: "/app/meus-roteiros", label: "Meus roteiros", icon: History },
   { href: "/app/biblioteca", label: "Biblioteca", icon: Library, badge: "PRO" },
+  { href: "/app/ajustes", label: "Ajustes", icon: SettingsIcon },
   { href: "/app/precos", label: "Planos", icon: CreditCard },
 ];
 

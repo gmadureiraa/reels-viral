@@ -34,6 +34,9 @@ interface LibraryRow {
   template_type: string | null;
   hook_pattern: string | null;
   featured: boolean;
+  source_idea_id: string | null;
+  source_idea_position: number | null;
+  source_idea_title: string | null;
 }
 
 export async function GET(req: Request) {
@@ -47,8 +50,9 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const template = url.searchParams.get("template");
-  const limitRaw = Number(url.searchParams.get("limit") ?? 24);
-  const limit = Math.min(60, Math.max(6, Number.isFinite(limitRaw) ? limitRaw : 24));
+  // Default 8 (entrega rápida + first-screen completa); user clica "Ver mais" pra carregar até 60.
+  const limitRaw = Number(url.searchParams.get("limit") ?? 8);
+  const limit = Math.min(60, Math.max(6, Number.isFinite(limitRaw) ? limitRaw : 8));
 
   // Determina se user tem acesso pago
   const auth = await getOptionalUserId(req);
@@ -67,20 +71,28 @@ export async function GET(req: Request) {
   try {
     rows = template
       ? ((await sql`
-          SELECT id::text, ig_url, short_code, author_handle, caption, thumb_url,
-                 likes_count, views_count, duration_seconds, template_type,
-                 hook_pattern, featured
-            FROM library_reels
-           WHERE template_type = ${template}
-           ORDER BY featured DESC, likes_count DESC NULLS LAST
+          SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
+                 r.likes_count, r.views_count, r.duration_seconds, r.template_type,
+                 r.hook_pattern, r.featured,
+                 r.source_idea_id::text AS source_idea_id,
+                 i.position AS source_idea_position,
+                 i.title AS source_idea_title
+            FROM library_reels r
+            LEFT JOIN library_ideas i ON i.id = r.source_idea_id
+           WHERE r.template_type = ${template}
+           ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
            LIMIT ${limit}
         `) as LibraryRow[])
       : ((await sql`
-          SELECT id::text, ig_url, short_code, author_handle, caption, thumb_url,
-                 likes_count, views_count, duration_seconds, template_type,
-                 hook_pattern, featured
-            FROM library_reels
-           ORDER BY featured DESC, likes_count DESC NULLS LAST
+          SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
+                 r.likes_count, r.views_count, r.duration_seconds, r.template_type,
+                 r.hook_pattern, r.featured,
+                 r.source_idea_id::text AS source_idea_id,
+                 i.position AS source_idea_position,
+                 i.title AS source_idea_title
+            FROM library_reels r
+            LEFT JOIN library_ideas i ON i.id = r.source_idea_id
+           ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
            LIMIT ${limit}
         `) as LibraryRow[]);
   } catch (err) {
@@ -102,7 +114,30 @@ export async function GET(req: Request) {
     }));
   }
 
-  return NextResponse.json({ reels: rows, unlocked });
+  // Map source_idea_* → sourceIdea object
+  const reels = rows.map((r) => ({
+    id: r.id,
+    ig_url: r.ig_url,
+    short_code: r.short_code,
+    author_handle: r.author_handle,
+    caption: r.caption,
+    thumb_url: r.thumb_url,
+    likes_count: r.likes_count,
+    views_count: r.views_count,
+    duration_seconds: r.duration_seconds,
+    template_type: r.template_type,
+    hook_pattern: r.hook_pattern,
+    featured: r.featured,
+    sourceIdea:
+      r.source_idea_id && r.source_idea_position != null
+        ? {
+            id: r.source_idea_id,
+            position: r.source_idea_position,
+            title: r.source_idea_title ?? "",
+          }
+        : null,
+  }));
+  return NextResponse.json({ reels, unlocked });
 }
 
 function maskHandle(handle: string): string {

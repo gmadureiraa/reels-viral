@@ -425,3 +425,116 @@ function labelObjetivo(o: AdaptBrief["objetivo"]): string {
       return "Engajamento (comments, saves, shares)";
   }
 }
+
+// ─── ANALYZE-ONLY (biblioteca cache) ─────────────────────────────────────
+//
+// Pra biblioteca: queremos transcript + análise sem gerar roteiro novo.
+// Cacheado em library_reels.transcript / analysis_json. Roteiro só é
+// gerado quando o user clica "Pegar pro meu perfil" (rota /api/adapt-reel).
+
+const AnalyzeOnlySchema = z.object({
+  transcript: z.string(),
+  analysis: z.object({
+    resumo: z.string(),
+    porQueViralizou: z.array(z.string()),
+    estrutura: z.object({
+      hook: TextoTempoSchema,
+      promessa: TextoTempoSchema,
+      demonstracao: TextoTempoSchema,
+      provaSocial: TextoTempoSchema,
+      cta: TextoTempoSchema,
+    }),
+    padroesTransferiveis: z.array(z.string()),
+  }),
+});
+
+const ANALYZE_ONLY_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    transcript: { type: "string" },
+    analysis: RESPONSE_SCHEMA.properties.analysis,
+  },
+  required: ["transcript", "analysis"],
+};
+
+const ANALYZE_ONLY_SYSTEM = `Você é o "Engenheiro Reverso de Reels Virais". Recebe um Reel e devolve:
+
+1. **transcript**: transcrição completa, em PT-BR, do que é falado/legendado no reel. Quebrado em parágrafos curtos seguindo a cadência das cenas. Inclua marcações de tempo no início de blocos relevantes (ex: "[00:00] ...").
+2. **analysis**: análise estrutural concreta — resumo, estrutura (hook, promessa, demonstração, prova social, CTA cada um com texto + tempo), por que viralizou, padrões transferíveis.
+
+Regras:
+- NUNCA invente fala. Se o áudio é instrumental ou sem fala, transcrição vira "(sem fala — só visual + música)".
+- Tempos no formato "00:00–00:08".
+- Frases curtas, verbo forte na análise.
+- "porQueViralizou" deve ser específico (não "tem hook forte" — explique POR QUE aquele hook funciona).
+- "padroesTransferiveis" são mecanismos narrativos que funcionariam em outros nichos.
+
+Devolva APENAS o JSON no schema fornecido.`;
+
+export interface AnalyzeOnlyResult {
+  transcript: string;
+  analysis: SourceAnalysis;
+}
+
+export async function analyzeReelOnly(
+  videoBytes: ArrayBuffer,
+  sourceCaption: string | undefined,
+): Promise<AnalyzeOnlyResult> {
+  const ai = getClient();
+  const useInline = videoBytes.byteLength < INLINE_DATA_THRESHOLD;
+  const inlineData = useInline
+    ? Buffer.from(videoBytes).toString("base64")
+    : null;
+  const fileUri = useInline ? null : await uploadAndWait(ai, videoBytes);
+
+  const videoPart = inlineData
+    ? { inlineData: { mimeType: "video/mp4", data: inlineData } }
+    : { fileData: { mimeType: "video/mp4", fileUri: fileUri as string } };
+
+  const userBlock = `# REEL PRA ANALISAR (anexado)
+
+Caption original (contexto):
+> ${sourceCaption || "(sem caption)"}
+
+# TAREFA
+
+Devolva transcript completo + análise estrutural concreta. Sem inventar nada.`;
+
+  const result = await ai.models.generateContent({
+    model: MODEL_ID,
+    contents: [
+      {
+        role: "user",
+        parts: [videoPart, { text: userBlock }],
+      },
+    ],
+    config: {
+      systemInstruction: ANALYZE_ONLY_SYSTEM,
+      temperature: 0.5,
+      topP: 0.9,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+      responseSchema: ANALYZE_ONLY_RESPONSE_SCHEMA,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+
+  const text = result.text ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Gemini retornou JSON inválido em analyze-only (${text.length} chars): ${text.slice(0, 200)}`,
+    );
+  }
+
+  const validation = AnalyzeOnlySchema.safeParse(parsed);
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    throw new Error(
+      `Gemini analyze-only shape inválido em ${issue.path.join(".")}: ${issue.message}`,
+    );
+  }
+  return validation.data as AnalyzeOnlyResult;
+}
