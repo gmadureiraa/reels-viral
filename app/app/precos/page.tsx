@@ -10,8 +10,9 @@
  * estratégia do login wall do form principal).
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Check, Loader2, ArrowLeft, Settings, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { PLANS_RV, type PlanId } from "@/lib/pricing";
@@ -30,13 +31,66 @@ interface SubscriptionInfo {
   cancelAtPeriodEnd: boolean;
 }
 
+// useSearchParams precisa de Suspense boundary (Next 16 App Router) — o
+// prerender estático quebra sem ele.
 export default function PricingPage() {
+  return (
+    <Suspense fallback={null}>
+      <PricingPageInner />
+    </Suspense>
+  );
+}
+
+function PricingPageInner() {
   const session = useNeonSession();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [loadingPlan, setLoadingPlan] = useState<PaidPlanId | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<PaidPlanId | null>(null);
   const [subInfo, setSubInfo] = useState<SubscriptionInfo | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  // Toast de feedback após retorno do Stripe Checkout.
+  // Webhook é assíncrono — pode haver delay de 1-2s pro DB refletir o
+  // novo plano. Refazemos polls leves do /api/me/subscription nos
+  // próximos 6s pra mostrar o badge "Plano atual" assim que webhook
+  // processar.
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    const plan = searchParams.get("plan");
+    if (!payment) return;
+
+    if (payment === "success") {
+      const planName =
+        plan && plan in PLANS_RV
+          ? PLANS_RV[plan as PlanId].name
+          : "premium";
+      toast.success(`Bem-vindo ao plano ${planName}! Aproveita.`, {
+        duration: 6000,
+      });
+      // Polling pra refrescar subInfo (webhook pode levar 1-3s).
+      let attempts = 0;
+      const id = window.setInterval(() => {
+        attempts++;
+        setRefreshTick((t) => t + 1);
+        if (attempts >= 6) window.clearInterval(id);
+      }, 1500);
+    } else if (payment === "cancelled") {
+      toast("Checkout cancelado. Volta quando quiser.", {
+        description: "Nenhuma cobrança foi feita.",
+      });
+    }
+
+    // Limpa query param sem causar reload (Next 16 router replace).
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("payment");
+    params.delete("plan");
+    const qs = params.toString();
+    router.replace(`/app/precos${qs ? `?${qs}` : ""}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Busca plano atual quando user logado
   useEffect(() => {
@@ -61,7 +115,7 @@ export default function PricingPage() {
     return () => {
       cancel = true;
     };
-  }, [session.data?.user?.id]);
+  }, [session.data?.user?.id, refreshTick]);
 
   async function handleSubscribe(planId: PaidPlanId) {
     if (!session.data?.user) {

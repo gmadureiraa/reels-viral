@@ -129,8 +129,10 @@ export async function POST(req: Request) {
         },
       ],
       allow_promotion_codes: true,
-      success_url: `${origin}/?payment=success&plan=${planId}`,
-      cancel_url: `${origin}/?payment=cancelled`,
+      // Volta pra /app/precos pra dar feedback (toast + plano atualizado).
+      // Anterior ia pra `/` que não tinha handler — user achava que falhou.
+      success_url: `${origin}/app/precos?payment=success&plan=${planId}`,
+      cancel_url: `${origin}/app/precos?payment=cancelled`,
     });
 
     return NextResponse.json({ url: session.url });

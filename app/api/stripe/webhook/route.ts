@@ -17,10 +17,57 @@
 
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
-import { stripe, STRIPE_APP_TAG, type PlanId } from "@/lib/stripe";
+import { stripe, STRIPE_APP_TAG, type PlanId, PLANS_RV } from "@/lib/stripe";
 import { neon } from "@neondatabase/serverless";
 import { fireResendEvent } from "@/lib/resend";
 import { applyReferralReward } from "@/lib/referrals";
+
+/**
+ * Stripe API ≥ 2025-03-31.basil moved `current_period_start/end` para
+ * SubscriptionItem (não mais Subscription). SDK v22 (que usamos) defaulta
+ * à API 2026-04-22.dahlia. Pegamos do primeiro item, com fallback no
+ * próprio sub pra contas em API legacy.
+ */
+function getSubscriptionPeriod(sub: Stripe.Subscription): {
+  start: number | null;
+  end: number | null;
+} {
+  const item = sub.items.data[0] as
+    | (Stripe.SubscriptionItem & {
+        current_period_start?: number;
+        current_period_end?: number;
+      })
+    | undefined;
+  // Cast: API legacy expõe period_start no sub; defesa em profundidade.
+  const legacy = sub as unknown as {
+    current_period_start?: number;
+    current_period_end?: number;
+  };
+  return {
+    start: item?.current_period_start ?? legacy.current_period_start ?? null,
+    end: item?.current_period_end ?? legacy.current_period_end ?? null,
+  };
+}
+
+/**
+ * Tenta inferir o planId atual a partir do unit_amount do price (BRL
+ * cents). Usado quando o user troca de plano via portal Stripe — a
+ * metadata.planId fica defasada nesse caso. Fallback retorna null.
+ */
+function derivePlanFromPrice(sub: Stripe.Subscription): PlanId | null {
+  const price = sub.items.data[0]?.price;
+  if (!price) return null;
+  // Match por Price ID (quando STRIPE_PRICE_RV_BASIC_MONTH/MAX_MONTH set)
+  const basicId = process.env.STRIPE_PRICE_RV_BASIC_MONTH;
+  const maxId = process.env.STRIPE_PRICE_RV_MAX_MONTH;
+  if (basicId && price.id === basicId) return "basic";
+  if (maxId && price.id === maxId) return "max";
+  // Match por unit_amount (price_data inline — caso atual default).
+  const amount = price.unit_amount;
+  if (amount === PLANS_RV.basic.priceMonthly) return "basic";
+  if (amount === PLANS_RV.max.priceMonthly) return "max";
+  return null;
+}
 
 export const runtime = "nodejs";
 // Stripe webhook precisa do raw body pra verificar a signature.
@@ -152,6 +199,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
   // Pega detalhes da subscription pra extrair period_end
   const sub = await stripe.subscriptions.retrieve(subscriptionId);
+  const period = getSubscriptionPeriod(sub);
 
   const sql = getSql();
   await sql`
@@ -165,8 +213,8 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       ${userId}, ${planId}, ${sub.status},
       ${customerId}, ${subscriptionId},
       ${sub.items.data[0]?.price?.id ?? null},
-      to_timestamp(${(sub as unknown as { current_period_start: number }).current_period_start}),
-      to_timestamp(${(sub as unknown as { current_period_end: number }).current_period_end}),
+      ${period.start ? new Date(period.start * 1000).toISOString() : null},
+      ${period.end ? new Date(period.end * 1000).toISOString() : null},
       ${sub.cancel_at_period_end},
       NOW(), NOW()
     )
@@ -234,8 +282,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
   if (sub.metadata?.app !== STRIPE_APP_TAG) return;
   const userId = sub.metadata.userId;
-  const planId = sub.metadata.planId as PlanId | undefined;
-  if (!userId || !planId) return;
+  // Plano: prefere derivar do price atual (suporta troca via portal),
+  // fallback pra metadata pra subs criados antes do fix.
+  const planId =
+    derivePlanFromPrice(sub) ?? (sub.metadata.planId as PlanId | undefined);
+  if (!userId || !planId) {
+    console.warn(
+      "[webhook] subscription.updated sem planId derivável:",
+      sub.id,
+      "price.id=",
+      sub.items.data[0]?.price?.id,
+    );
+    return;
+  }
 
   const sql = getSql();
   // Le plano anterior ANTES do UPDATE pra detectar upgrade vs downgrade.
@@ -246,13 +305,14 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
   `) as Array<{ plan: string }>;
   const prevPlan = prev[0]?.plan ?? null;
 
+  const period = getSubscriptionPeriod(sub);
   await sql`
     UPDATE user_subscriptions
        SET plan = ${planId},
            status = ${sub.status},
            stripe_price_id = ${sub.items.data[0]?.price?.id ?? null},
-           current_period_start = to_timestamp(${(sub as unknown as { current_period_start: number }).current_period_start}),
-           current_period_end = to_timestamp(${(sub as unknown as { current_period_end: number }).current_period_end}),
+           current_period_start = ${period.start ? new Date(period.start * 1000).toISOString() : null},
+           current_period_end = ${period.end ? new Date(period.end * 1000).toISOString() : null},
            cancel_at_period_end = ${sub.cancel_at_period_end},
            updated_at = NOW()
      WHERE stripe_subscription_id = ${sub.id}

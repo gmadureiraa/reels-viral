@@ -41,10 +41,18 @@ interface NavItem {
   badge?: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
+/**
+ * Sidebar nav split em 2 grupos (igual SV):
+ *   - PRIMARY (topo): features principais — Adaptar reel, Meus roteiros, Biblioteca
+ *   - SECONDARY (rodapé, antes do user card): Indique e ganhe, Ajustes, Planos
+ */
+const PRIMARY_NAV: NavItem[] = [
   { href: "/app", label: "Adaptar reel", icon: PlusCircle },
   { href: "/app/meus-roteiros", label: "Meus roteiros", icon: History },
   { href: "/app/biblioteca", label: "Biblioteca", icon: Library, badge: "PRO" },
+];
+
+const SECONDARY_NAV: NavItem[] = [
   { href: "/app/ajustes/indicacoes", label: "Indique e ganhe", icon: Gift },
   { href: "/app/ajustes", label: "Ajustes", icon: SettingsIcon },
   { href: "/app/precos", label: "Planos", icon: CreditCard },
@@ -145,7 +153,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!session.data?.user) return null;
 
   const isAdmin = isAdminEmail(session.data.user.email);
-  const navItems = isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  // Admin entra no PRIMARY (debug/operação). SECONDARY (Indique/Ajustes/Planos)
+  // sempre fica no rodapé do sidebar pra ficar visualmente separado.
+  const primaryItems = isAdmin ? [...PRIMARY_NAV, ADMIN_NAV_ITEM] : PRIMARY_NAV;
+  const secondaryItems = SECONDARY_NAV;
 
   return (
     <div
@@ -176,7 +187,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         <SidebarContent
           pathname={pathname}
-          navItems={navItems}
+          primaryItems={primaryItems}
+          secondaryItems={secondaryItems}
           userEmail={session.data.user.email}
           userName={session.data.user.name}
           onNavigate={closeDrawer}
@@ -213,7 +225,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       >
         <SidebarContent
           pathname={pathname}
-          navItems={navItems}
+          primaryItems={primaryItems}
+          secondaryItems={secondaryItems}
           userEmail={session.data.user.email}
           userName={session.data.user.name}
           onNavigate={closeDrawer}
@@ -283,7 +296,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
 function SidebarContent({
   pathname,
-  navItems,
+  primaryItems,
+  secondaryItems,
   userEmail,
   userName,
   onNavigate,
@@ -291,13 +305,67 @@ function SidebarContent({
   onClose,
 }: {
   pathname: string;
-  navItems: NavItem[];
+  primaryItems: NavItem[];
+  secondaryItems: NavItem[];
   userEmail: string;
   userName: string | null | undefined;
   onNavigate: () => void;
   showCloseButton?: boolean;
   onClose?: () => void;
 }) {
+  // Helper que renderiza um link de nav. Reusado pelo PRIMARY e pelo
+  // SECONDARY pra manter consistência visual sem duplicar JSX.
+  function renderNavLink({ href, label, icon: Icon, badge }: NavItem) {
+    const active =
+      href === "/app"
+        ? pathname === "/app"
+        : href === "/app/ajustes"
+          ? pathname === "/app/ajustes"
+          : pathname.startsWith(href);
+    return (
+      <Link
+        key={href}
+        href={href}
+        onClick={onNavigate}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 10px",
+          background: active ? "var(--color-rv-rec)" : "transparent",
+          color: active ? "white" : "rgba(245,241,232,0.72)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 10.5,
+          letterSpacing: "0.12em",
+          textTransform: "uppercase",
+          fontWeight: 600,
+          textDecoration: "none",
+          boxShadow: active ? "2px 2px 0 0 rgba(0,0,0,0.3)" : "none",
+          transition: "background 0.12s, color 0.12s",
+        }}
+      >
+        <Icon size={15} strokeWidth={1.8} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+        {badge && (
+          <span
+            style={{
+              fontSize: 8,
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              padding: "1px 6px",
+              background: active
+                ? "rgba(0,0,0,0.18)"
+                : "var(--color-rv-rec)",
+              color: "white",
+            }}
+          >
+            {badge}
+          </span>
+        )}
+      </Link>
+    );
+  }
+
   const handleSignOut = async () => {
     if (!isAuthConfigured()) return;
     try {
@@ -415,65 +483,35 @@ function SidebarContent({
         Workspace
       </div>
 
-      {/* Nav */}
+      {/* Primary nav (workspace) */}
       <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {navItems.map(({ href, label, icon: Icon, badge }) => {
-          // /app/ajustes precisa ser exato pra nao "engolir" as subrotas
-          // (/app/ajustes/indicacoes). Se uma subrota mais especifica
-          // bater, ela ativa, mas /app/ajustes nao ativa em cima dela.
-          const active =
-            href === "/app"
-              ? pathname === "/app"
-              : href === "/app/ajustes"
-                ? pathname === "/app/ajustes"
-                : pathname.startsWith(href);
-          return (
-            <Link
-              key={href}
-              href={href}
-              onClick={onNavigate}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "9px 10px",
-                background: active ? "var(--color-rv-rec)" : "transparent",
-                color: active ? "white" : "rgba(245,241,232,0.72)",
-                fontFamily: "var(--font-mono)",
-                fontSize: 10.5,
-                letterSpacing: "0.12em",
-                textTransform: "uppercase",
-                fontWeight: 600,
-                textDecoration: "none",
-                boxShadow: active ? "2px 2px 0 0 rgba(0,0,0,0.3)" : "none",
-                transition: "background 0.12s, color 0.12s",
-              }}
-            >
-              <Icon size={15} strokeWidth={1.8} style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
-              {badge && (
-                <span
-                  style={{
-                    fontSize: 8,
-                    fontWeight: 800,
-                    letterSpacing: "0.08em",
-                    padding: "1px 6px",
-                    background: active
-                      ? "rgba(0,0,0,0.18)"
-                      : "var(--color-rv-rec)",
-                    color: active ? "white" : "white",
-                  }}
-                >
-                  {badge}
-                </span>
-              )}
-            </Link>
-          );
-        })}
+        {primaryItems.map(renderNavLink)}
       </nav>
 
-      {/* Spacer */}
+      {/* Spacer flexível empurra SECONDARY pra base */}
       <div style={{ flex: 1, minHeight: 24 }} />
+
+      {/* Secondary nav (rodapé): Indique e ganhe, Ajustes, Planos. Visualmente
+          separado do PRIMARY com section label e divider sutil. */}
+      <div
+        style={{
+          padding: "8px 4px 6px",
+          fontFamily: "var(--font-mono)",
+          fontSize: 9,
+          letterSpacing: "0.22em",
+          textTransform: "uppercase",
+          color: "rgba(245,241,232,0.4)",
+          fontWeight: 700,
+          borderTop: "1px solid rgba(245,241,232,0.12)",
+          marginTop: 12,
+          paddingTop: 14,
+        }}
+      >
+        Conta
+      </div>
+      <nav style={{ display: "flex", flexDirection: "column", gap: 2, marginBottom: 12 }}>
+        {secondaryItems.map(renderNavLink)}
+      </nav>
 
       {/* User card + sign out */}
       <div
