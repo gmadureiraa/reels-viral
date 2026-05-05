@@ -18,7 +18,7 @@ import { z } from "zod";
 import { fetchInstagramPost, downloadReelVideo, ApifyError, type ApifyReelItem } from "@/lib/apify";
 import { adaptReelWithGemini } from "@/lib/gemini";
 import { extractShortCode, isValidInstagramUrl } from "@/lib/utils";
-import { checkRateLimit, getClientKey } from "@/lib/rate-limit";
+import { checkRateLimit, getAnonFingerprint, getClientKey } from "@/lib/rate-limit";
 import { getOptionalUserId } from "@/lib/server-auth";
 import { getCachedScrape, setCachedScrape } from "@/lib/scripts-store";
 import { isDbConfigured } from "@/lib/db";
@@ -89,10 +89,14 @@ export async function POST(req: Request) {
       rateLimitLimit = 10;
       rateLimitMsg = ""; // preenchido abaixo se bloqueado
     } else {
-      // Anônimo: chave = IP + device fingerprint (header opcional do client)
-      const ip = getClientKey(req);
-      const deviceId = req.headers.get("x-device-id");
-      rateLimitKey = `anon:${ip}:${deviceId ?? "no-device"}`;
+      // Anônimo: chave = IP + UA/Lang fingerprint + device-id opcional do
+      // client. Antes era só IP+device-id, mas device-id vem do client e é
+      // forjável; agora soma UA+Lang hash que dificulta proxy spam (precisa
+      // variar IP + UA juntos pra escapar). Não é Upstash-safe ainda, mas
+      // é o melhor sem distributed cache.
+      const fingerprint = getAnonFingerprint(req);
+      const deviceId = req.headers.get("x-device-id") ?? "no-device";
+      rateLimitKey = `anon:${fingerprint}:${deviceId}`;
       rateLimitLimit = 2;
       rateLimitMsg = "";
     }

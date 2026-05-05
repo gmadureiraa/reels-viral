@@ -81,3 +81,27 @@ export function getClientKey(req: Request): string {
   if (real) return real.trim();
   return "anonymous";
 }
+
+/**
+ * Fingerprint composto pro caso anony — IP + hash 8-char de
+ * (User-Agent + Accept-Language). Dificulta bypass via proxies que rodam
+ * o mesmo browser default — pra spammar de verdade, attacker precisa
+ * variar IP + UA + Lang juntos, custo real.
+ *
+ * Não é resistente a botnet sofisticado, mas levanta o piso pra abuso
+ * casual sem precisar de cookie session/HMAC.
+ */
+export function getAnonFingerprint(req: Request): string {
+  const ip = getClientKey(req);
+  const ua = req.headers.get("user-agent") ?? "";
+  const lang = req.headers.get("accept-language") ?? "";
+  // Hash leve (FNV-1a 32-bit) — não-criptográfico, só pra encurtar a key.
+  let hash = 2166136261;
+  const str = `${ua}|${lang}`;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  const fp = (hash >>> 0).toString(36).slice(0, 8);
+  return `${ip}:${fp}`;
+}
