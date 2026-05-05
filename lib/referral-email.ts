@@ -43,12 +43,17 @@ export function buildReferralConvertedEmail(p: ReferralConvertedProps) {
   const firstName = (p.name ?? p.email.split("@")[0] ?? "criador").split(" ")[0];
   const reward = formatBrl(p.rewardCents);
   const total = formatBrl(p.totalCreditCents);
+  // Cada conversão = 1 mês de Pro. Conta meses acumulados.
+  const totalMonths = p.rewardCents > 0
+    ? Math.round(p.totalCreditCents / p.rewardCents)
+    : 1;
+  const monthsLabel = totalMonths === 1 ? "1 mês grátis" : `${totalMonths} meses grátis`;
   const SITE =
     process.env.NEXT_PUBLIC_SITE_URL ?? "https://reels.kaleidos.com.br";
   const referralsUrl = `${SITE}/app/ajustes/indicacoes`;
 
-  const subject = "Você ganhou R$ 25 em crédito";
-  const preheader = `Um amigo seu acabou de assinar o Reels Viral — ${reward} caíram no seu saldo.`;
+  const subject = "🎁 Você ganhou 1 mês grátis de Pro";
+  const preheader = `Um amigo seu acabou de assinar o Reels Viral — 1 mês grátis de Pro caiu no seu saldo.`;
 
   const html = `<!doctype html>
 <html lang="pt-BR">
@@ -70,15 +75,15 @@ export function buildReferralConvertedEmail(p: ReferralConvertedProps) {
 </td></tr>
 <tr><td style="padding:24px 32px">
   <h1 style="font-family:-apple-system,sans-serif;font-size:28px;line-height:1.15;font-weight:800;letter-spacing:-0.02em;margin:0 0 12px;color:${INK}">
-    ${firstName}, você acabou de ganhar ${reward}.
+    ${firstName}, você ganhou 1 mês grátis de Pro.
   </h1>
   <p style="font-size:15px;line-height:1.6;color:${INK};margin:0 0 16px">
-    Um amigo seu acabou de assinar o Reels Viral usando seu link de indicação. Como combinado, <strong>${reward}</strong> entraram no seu saldo agora.
+    Um amigo seu acabou de assinar o Reels Viral usando seu link de indicação. Como combinado, <strong>1 mês grátis de Pro</strong> (${reward}) entrou no seu saldo agora — vai abater na sua próxima fatura.
   </p>
   <div style="margin:24px 0;padding:18px 20px;background:${CREAM};border-left:4px solid ${REC_CORAL};color:${INK};font-size:14px;line-height:1.5">
-    <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;font-weight:700;color:${MUTED};margin-bottom:6px">Crédito acumulado</div>
-    <div style="font-size:24px;font-weight:800;letter-spacing:-0.02em">${total}</div>
-    <div style="font-size:12px;color:${MUTED};margin-top:4px">vai abater automático na sua próxima fatura</div>
+    <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;font-weight:700;color:${MUTED};margin-bottom:6px">Acumulado</div>
+    <div style="font-size:24px;font-weight:800;letter-spacing:-0.02em">${monthsLabel} de Pro</div>
+    <div style="font-size:12px;color:${MUTED};margin-top:4px">= ${total} em crédito Stripe · abate auto na próxima fatura</div>
   </div>
   <div style="margin:24px 0">
     <a href="${referralsUrl}" style="display:inline-block;background:${INK};color:#fff;font-weight:700;padding:14px 24px;text-decoration:none;border:1.5px solid ${INK};box-shadow:4px 4px 0 0 ${REC_CORAL};font-size:13px;letter-spacing:0.04em;text-transform:uppercase">
@@ -86,7 +91,7 @@ export function buildReferralConvertedEmail(p: ReferralConvertedProps) {
     </a>
   </div>
   <p style="font-size:13px;line-height:1.6;color:${MUTED};margin:24px 0 0">
-    Continua valendo: cada amigo novo que assinar com seu link te dá <strong>${reward}</strong> de crédito. Sem limite de indicações, e os créditos acumulam.
+    Continua valendo: cada amigo novo que assinar com seu link te dá <strong>+1 mês grátis de Pro</strong>. Sem limite de indicações, e os créditos acumulam.
   </p>
   <p style="font-size:14px;line-height:1.6;color:${INK};margin:24px 0 0">
     No flow,<br>
@@ -106,15 +111,15 @@ export function buildReferralConvertedEmail(p: ReferralConvertedProps) {
 </body>
 </html>`;
 
-  const text = `${firstName}, você acabou de ganhar ${reward}.
+  const text = `${firstName}, você ganhou 1 mês grátis de Pro.
 
-Um amigo seu acabou de assinar o Reels Viral usando seu link de indicação. ${reward} entraram no seu saldo agora.
+Um amigo seu acabou de assinar o Reels Viral usando seu link de indicação. 1 mês grátis de Pro (${reward}) entrou no seu saldo — abate auto na próxima fatura.
 
-Crédito total acumulado: ${total} — vai abater automático na sua próxima fatura.
+Acumulado: ${monthsLabel} de Pro (${total} em crédito Stripe).
 
 Ver minhas indicações: ${referralsUrl}
 
-Continua valendo: cada amigo novo que assinar com seu link te dá ${reward}. Sem limite, créditos acumulam.
+Continua valendo: cada amigo novo que assinar com seu link te dá +1 mês grátis de Pro. Sem limite, créditos acumulam.
 
 No flow,
 Madureira · Reels Viral`;

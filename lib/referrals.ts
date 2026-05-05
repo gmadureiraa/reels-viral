@@ -5,9 +5,9 @@
  *   - Pro referido (convidado): cupom Stripe AMIGOPRO30 (30% off 1o mes).
  *     O cupom em si vive no Stripe Dashboard como `promotion_code` global,
  *     compartilhado com Sequência Viral. Aqui apenas registramos a indicacao.
- *   - Pro referrer (quem indicou): R$ 25,00 em customer.balance no Stripe
- *     quando o referido paga primeira fatura. Aplica automaticamente no
- *     proximo invoice. Acumula sem limite.
+ *   - Pro referrer (quem indicou): 1 mês grátis de Pro em customer.balance no
+ *     Stripe (= valor do Pro mensal) quando o referido paga primeira fatura.
+ *     Abate auto na próxima cobrança. Acumula sem limite.
  *
  * Diferencas vs SV:
  *   - Postgres direto via @neondatabase/serverless (sem Supabase).
@@ -20,9 +20,17 @@ import type { NeonQueryFunction } from "@neondatabase/serverless";
 import { stripe } from "@/lib/stripe";
 import { fireResendEvent } from "@/lib/resend";
 import { sendReferralConverted } from "@/lib/referral-email";
+import { PLANS_RV } from "@/lib/pricing";
 
-/** Recompensa fixa em centavos BRL pro referrer quando o referido paga. */
-export const REFERRAL_REWARD_CENTS = 2500; // R$ 25,00
+/**
+ * Recompensa = preço cheio de 1 mês do Pro. Hoje RV usa 'basic' como nome
+ * do tier pago principal — quando padronizar pra 'pro' isso ainda funciona
+ * (basta atualizar a chave). Importado de PLANS_RV pra ficar em sync.
+ *
+ * UI mostra "1 mês grátis de Pro" — credit BRL é só o mecanismo Stripe.
+ */
+export const REFERRAL_REWARD_CENTS: number = PLANS_RV.basic.priceMonthly;
+export const REFERRAL_REWARD_LABEL = "1 mês grátis de Pro" as const;
 
 /**
  * Tipo do client neon (sql tagged template).
@@ -327,7 +335,7 @@ export async function applyReferralReward(args: {
     await stripe.customers.createBalanceTransaction(referrerStripeCustomer, {
       amount: -REFERRAL_REWARD_CENTS,
       currency: "brl",
-      description: `Indique e ganhe — recompensa por indicacao paga (referral ${referral.id})`,
+      description: `Indique e ganhe — 1 mês grátis de Pro (referral ${referral.id})`,
       metadata: {
         referralId: referral.id,
         referrerUserId,

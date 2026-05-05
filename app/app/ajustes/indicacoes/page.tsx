@@ -416,9 +416,15 @@ export default function IndicacoesPage() {
             />
             <StatCard
               icon={<Wallet size={16} />}
-              label="Crédito acumulado"
-              value={formatBrl(me.totalCreditCents)}
-              hint="Abate na próxima fatura Stripe"
+              label="Meses grátis de Pro"
+              value={
+                me.conversionCount > 0
+                  ? me.conversionCount === 1
+                    ? "1 mês grátis"
+                    : `${me.conversionCount} meses grátis`
+                  : "0 meses"
+              }
+              hint={`= ${formatBrl(me.totalCreditCents)} em crédito Stripe (abate auto na próxima fatura)`}
               highlight
             />
           </div>
@@ -452,7 +458,7 @@ export default function IndicacoesPage() {
                 }}
               >
                 Ainda sem indicações. Cola seu link em qualquer rede que você
-                usa — o primeiro amigo que entrar já vale R$ 25.
+                usa — cada amigo que assinar vale <strong>1 mês grátis de Pro</strong>.
               </p>
             </div>
           ) : (
