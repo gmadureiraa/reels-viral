@@ -103,6 +103,22 @@ function pickSource(idea: IdeaRow): PickedSource | null {
       query: idea.search_query,
     };
   }
+  // 4ª (fallback): usa o título da pauta como query. Cobre pautas
+  // sem exampleUrls nem search_url no Notion.
+  if (idea.title && idea.title.length > 8) {
+    const cleanQuery = idea.title
+      .replace(/\(.*?\)/g, "")
+      .replace(/[…"'?]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
+    return {
+      mode: "search",
+      url: "",
+      platform: "tiktok",
+      query: cleanQuery,
+    };
+  }
   return null;
 }
 
