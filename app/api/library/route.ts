@@ -122,8 +122,11 @@ export async function GET(req: Request) {
   }
 
   // Free user: scrub campos sensíveis server-side (defense in depth — UI
-  // já borra, mas evita inspect DOM bypass). thumb_url também ofusca pra
-  // não vazar imagem em cleartext via DOM inspect.
+  // já borra, mas evita inspect DOM bypass).
+  // ig_url / caption / hook_pattern / short_code continuam ocultos (são o
+  // valor pago). thumb_url passa pra todos: serve de preview visual e é o
+  // que torna a biblioteca minimamente legível pra free user explorar antes
+  // de assinar.
   if (!unlocked) {
     rows = rows.map((r) => ({
       ...r,
@@ -131,7 +134,6 @@ export async function GET(req: Request) {
       short_code: null,
       caption: null,
       hook_pattern: null,
-      thumb_url: null,
       author_handle: r.author_handle ? maskHandle(r.author_handle) : null,
     }));
   }

@@ -244,15 +244,20 @@ export default function LibraryPage() {
   const reelCountVisible = filteredReels.length;
   const ideaCountVisible = filteredIdeas.length;
 
-  // Carrega perfil do user (pra usar no botão "Pegar pro meu perfil")
+  // Carrega perfil do user (pra usar no botão "Pegar pro meu perfil").
+  // Refetch também quando a aba volta ao foco — cobre o caso de user salvar
+  // em /app/ajustes e voltar pra biblioteca: sem isso o state local ficava
+  // stale com profile vazio e o banner "Configura @ + nicho + persona"
+  // continuava aparecendo mesmo com perfil completo no DB.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    async function loadProfile() {
       try {
         const jwt = await getJwtToken();
         if (!jwt) return;
         const res = await fetch("/api/me/profile", {
           headers: { Authorization: `Bearer ${jwt}` },
+          cache: "no-store",
         });
         if (!res.ok) return;
         const data = (await res.json()) as UserProfile;
@@ -260,9 +265,17 @@ export default function LibraryPage() {
       } catch {
         /* silencioso */
       }
-    })();
+    }
+    loadProfile();
+    function onVisibility() {
+      if (document.visibilityState === "visible") loadProfile();
+    }
+    window.addEventListener("focus", loadProfile);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", loadProfile);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
@@ -462,8 +475,12 @@ export default function LibraryPage() {
           })}
         </div>
 
-        {/* Banner perfil incompleto */}
-        {unlocked && profile && (!profile.nicho || !profile.persona) && (
+        {/* Banner perfil incompleto — mostra enquanto algum dos três campos
+            (handle, nicho ou persona) ainda estiver vazio. Antes só checava
+            nicho e persona e por isso a mensagem "Configura @ + nicho +
+            persona" parecia mentir quando user já tinha preenchido nicho e
+            persona mas faltava o @. Agora a checagem casa com a copy. */}
+        {unlocked && profile && (!profile.igHandle || !profile.nicho || !profile.persona) && (
           <div
             style={{
               background: "rgba(255, 61, 46, 0.06)",
@@ -797,7 +814,9 @@ function ReelCard({
     if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
     return String(n);
   };
-  const proxiedThumb = unlocked ? thumbProxy(reel.thumb_url) : null;
+  // Thumb sempre que existe — é o preview visual, ofuscar tudo deixava a
+  // biblioteca como uma grade de gradients indecifráveis pro free user.
+  const proxiedThumb = thumbProxy(reel.thumb_url);
   const cardContent = (
     <>
       <div
