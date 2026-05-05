@@ -9,7 +9,7 @@
  * Cores RV: ink (sidebar bg), paper (sidebar text), REC coral (active).
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { isValidInstagramUrl } from "@/lib/utils";
@@ -55,22 +55,13 @@ const ADMIN_NAV_ITEM: NavItem = {
   badge: "DEV",
 };
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
+/**
+ * Captura ?url=/?topic= via useSearchParams. Wrappped em <Suspense>
+ * pelo AppLayout pra não bailout o build estático no Next 16/Turbopack.
+ * Sem isso, o admin/precos não pre-renderizam.
+ */
+function SearchParamsBridge() {
   const searchParams = useSearchParams();
-  const session = useNeonSession();
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Auto-migra histórico anônimo (localStorage) → DB Neon assim que o
-  // user fica logado. Cobre todos os caminhos: AuthBar, AuthDialog do
-  // landing, AuthDialog do /app, e Google OAuth callback. Idempotente.
-  useLoginMigration();
-
-  // Bridge do Radar Viral em /app — anônimo bate aqui com ?topic= ou ?url=
-  // antes do auth gate redirecionar. Captura o brief em sessionStorage com
-  // autoRun=false ANTES do redirect, pra sobreviver ao auth flow e o /app
-  // pre-popular o form depois do login.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const rawUrl =
@@ -100,10 +91,20 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         /* sessionStorage bloqueado */
       }
     }
-    // Não limpa URL aqui — o /app/page.tsx faz isso após consumir state.
-    // Se o user é anônimo, o redirect leva pra landing e os params somem
-    // junto. Se logado, /app/page.tsx limpa e pre-popula.
   }, [searchParams]);
+  return null;
+}
+
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const session = useNeonSession();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Auto-migra histórico anônimo (localStorage) → DB Neon assim que o
+  // user fica logado. Cobre todos os caminhos: AuthBar, AuthDialog do
+  // landing, AuthDialog do /app, e Google OAuth callback. Idempotente.
+  useLoginMigration();
 
   // Auth gate: se não logado e auth está configurado, manda pra landing
   // (a landing tem o login wall).
@@ -152,6 +153,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         background: "var(--color-rv-paper)",
       }}
     >
+      <Suspense fallback={null}>
+        <SearchParamsBridge />
+      </Suspense>
+
       {/* Sidebar desktop (fixed à esquerda) */}
       <aside
         className="rv-sidebar-desktop"
