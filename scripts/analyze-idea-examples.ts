@@ -17,7 +17,13 @@
  */
 
 import { neon } from "@neondatabase/serverless";
-import { fetchInstagramPost, downloadReelVideo } from "../lib/apify";
+import {
+  fetchInstagramPost,
+  fetchTikTokVideo,
+  searchTikTokTopVideo,
+  downloadReelVideo,
+  type ApifyMediaItem,
+} from "../lib/apify";
 import { analyzeReelOnly } from "../lib/gemini";
 
 const url = process.env.DATABASE_URL;
@@ -46,44 +52,91 @@ interface IdeaRow {
   position: number;
   title: string;
   example_urls: string[] | null;
+  search_query: string | null;
+  search_url: string | null;
   formato: string | null;
   tipo: string | null;
   piramide: string | null;
 }
 
+type Platform = "instagram" | "tiktok";
+type FetchMode = "direct" | "search";
+
+interface PickedSource {
+  mode: FetchMode;
+  url: string;
+  platform: Platform;
+  query?: string;
+}
+
 /**
- * Filtra URLs IG que provavelmente são reel/post analisável:
- *  - tem /reel/SHORTCODE ou /p/SHORTCODE
- *  - exclui carrossel (?img_index=)
- *  - exclui perfis sem shortcode
+ * Decide a melhor fonte pra analisar a ideia. Prioridade:
+ *  1. URL direta IG (mais barato)
+ *  2. URL direta TikTok
+ *  3. Search query do TikTok (cai no Apify search → top 1)
+ *
+ * Retorna null se a ideia não tem nada usável.
  */
-function pickIgUrl(urls: string[]): string | null {
+function pickSource(idea: IdeaRow): PickedSource | null {
+  const urls = idea.example_urls ?? [];
+
+  // 1ª: instagram com shortcode
   for (const u of urls) {
     if (!u.includes("instagram.com")) continue;
-    if (u.includes("img_index")) continue; // carrossel
-    if (!/\/(reel|p)\/[A-Za-z0-9_-]{5,}/.test(u)) continue; // sem shortcode
-    return u;
+    if (u.includes("img_index")) continue;
+    if (!/\/(reel|p)\/[A-Za-z0-9_-]{5,}/.test(u)) continue;
+    return { mode: "direct", url: u, platform: "instagram" };
+  }
+  // 2ª: tiktok com /video/<id>
+  for (const u of urls) {
+    if (!u.includes("tiktok.com")) continue;
+    if (u.includes("/search")) continue;
+    if (!/\/video\/\d+/.test(u)) continue;
+    return { mode: "direct", url: u.split("?")[0], platform: "tiktok" };
+  }
+  // 3ª: search query do TikTok
+  if (idea.search_query) {
+    return {
+      mode: "search",
+      url: idea.search_url ?? "",
+      platform: "tiktok",
+      query: idea.search_query,
+    };
   }
   return null;
 }
 
+async function fetchSource(src: PickedSource): Promise<ApifyMediaItem> {
+  if (src.mode === "direct" && src.platform === "instagram") {
+    const item = await fetchInstagramPost(src.url);
+    return { ...item, source: "instagram" };
+  }
+  if (src.mode === "direct" && src.platform === "tiktok") {
+    return await fetchTikTokVideo(src.url);
+  }
+  // Search TikTok
+  if (!src.query) throw new Error("search mode sem query");
+  return await searchTikTokTopVideo(src.query);
+}
+
 async function main() {
-  // Pega ideias com IG analisável; ordena por position
+  // Pega TODAS as ideias com pelo menos URL direta OU search query
   const candidates = (await sql`
-    SELECT id::text, position, title, example_urls, formato, tipo, piramide
+    SELECT id::text, position, title, example_urls, search_query, search_url,
+           formato, tipo, piramide
       FROM library_ideas
-     WHERE example_urls IS NOT NULL
-       AND jsonb_array_length(example_urls) > 0
+     WHERE (example_urls IS NOT NULL AND jsonb_array_length(example_urls) > 0)
+        OR search_query IS NOT NULL
      ORDER BY position
   `) as IdeaRow[];
 
-  // Filtra só as que têm IG válido
-  const withIg = candidates
-    .map((c) => ({ idea: c, ig: pickIgUrl(c.example_urls ?? []) }))
-    .filter((x) => x.ig !== null) as Array<{ idea: IdeaRow; ig: string }>;
+  // Filtra só as que têm uma fonte usável
+  const withUrl = candidates
+    .map((c) => ({ idea: c, picked: pickSource(c) }))
+    .filter((x) => x.picked !== null) as Array<{ idea: IdeaRow; picked: PickedSource }>;
 
   // Skip ideias já analisadas (a menos que --force)
-  let queue = withIg;
+  let queue = withUrl;
   if (!force) {
     const analyzedIds = (await sql`
       SELECT DISTINCT source_idea_id::text AS id FROM library_reels WHERE source_idea_id IS NOT NULL
@@ -103,11 +156,14 @@ async function main() {
   let ok = 0;
   let fail = 0;
   for (let i = 0; i < queue.length; i++) {
-    const { idea, ig } = queue[i];
-    const tag = `[${i + 1}/${queue.length}] #${idea.position} ${idea.title.slice(0, 50)}`;
+    const { idea, picked } = queue[i];
+    const modeTag = picked.mode === "search" ? `${picked.platform}-search` : picked.platform;
+    const tag = `[${i + 1}/${queue.length}] #${idea.position} [${modeTag}] ${idea.title.slice(0, 45)}`;
     try {
-      console.log(`${tag} · scrape ${ig}`);
-      const item = await fetchInstagramPost(ig);
+      const sourceLabel =
+        picked.mode === "search" ? `q='${picked.query}'` : picked.url;
+      console.log(`${tag} · scrape ${sourceLabel}`);
+      const item = await fetchSource(picked);
       if (item.type !== "Video" || !item.videoUrl) {
         console.warn(`${tag} ⚠ não é vídeo (type=${item.type}) — skip`);
         fail++;
@@ -122,10 +178,16 @@ async function main() {
       const { transcript, analysis } = await analyzeReelOnly(videoBytes, item.caption);
       const elapsed = Math.round((Date.now() - t0) / 100) / 10;
 
-      // Insert em library_reels (UPSERT por ig_url UNIQUE)
-      const tags = [idea.formato, idea.tipo, idea.piramide].filter(Boolean);
+      // Insert em library_reels (UPSERT por ig_url UNIQUE — TikTok também
+      // entra como ig_url usando webVideoUrl como ID único; é o campo de
+      // dedupe do schema atual e cobre ambas plataformas).
+      const tags = [
+        picked.platform === "tiktok" ? "tiktok" : null,
+        idea.formato,
+        idea.tipo,
+        idea.piramide,
+      ].filter(Boolean);
 
-      // Tenta detectar template_type pelo formato
       const templateType = idea.formato
         ? idea.formato.toLowerCase().replace(/\s+/g, "_")
         : null;
