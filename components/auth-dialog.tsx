@@ -3,8 +3,15 @@
 import { useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
-import { getAuthClient } from "@/lib/auth-client";
+import { getAuthClient, getJwtToken } from "@/lib/auth-client";
 import { trackLead } from "@/lib/meta-pixel";
+import {
+  getStoredReferralCode,
+  trackReferral,
+  markReferralTracked,
+  clearReferralCode,
+  wasReferralTracked,
+} from "@/lib/referral-client";
 
 type Mode = "signin" | "signup";
 
@@ -52,6 +59,12 @@ export function AuthDialog({
       // tinha conta o Lead pode disparar em re-login. Aceitável — Pixel
       // dedupe e attribution windows tratam isso.
       if (mode === "signup") trackLead("free_signup_google");
+      // Resend audience + event reels.signup (best-effort, idempotente).
+      // No fluxo redirect-based isso aqui pode nem rodar (pagina ja
+      // recarregou). Fallback: useNeonSession do parent detecta user
+      // novo e idealmente tambem chama /api/auth/post-signup. Por
+      // enquanto disparamos aqui pra cobrir o non-redirect path.
+      await firePostSignup({ session: await client.getSession(), method: "google" });
       onSuccess();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Google indisponível");
@@ -78,6 +91,14 @@ export function AuthDialog({
       }
       // Lead pixel: só em signup, não em signin.
       if (mode === "signup") trackLead("free_signup_email");
+      // Resend audience + event reels.signup (best-effort, so em signup).
+      if (mode === "signup") {
+        await firePostSignup({
+          email: email.trim(),
+          name: name.trim() || null,
+          method: "email",
+        });
+      }
       onSuccess();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Falha");
@@ -331,6 +352,66 @@ function Field({
     </label>
   );
 }
+
+/**
+ * Fire-and-forget call pra /api/auth/post-signup que sincroniza Resend
+ * audience + dispara event reels.signup.
+ *
+ * Server-side handler para nao vazar RESEND_API_KEY no client. Idempotente
+ * (audience trata dup como update) entao pode ser chamado N vezes pro
+ * mesmo user sem efeito colateral.
+ *
+ * Aceita ou (email + name) explicito ou uma session do Better Auth pra
+ * extrair email/name. Falha silenciosa: nao bloqueia onSuccess.
+ */
+async function firePostSignup(args: {
+  email?: string;
+  name?: string | null;
+  method: "google" | "email";
+  session?: Awaited<ReturnType<NeonSessionGetter>> | null;
+}): Promise<void> {
+  let email = args.email;
+  let name = args.name;
+  if (!email && args.session?.data?.user) {
+    email = args.session.data.user.email;
+    name = name ?? args.session.data.user.name ?? null;
+  }
+  if (!email) return;
+  try {
+    await fetch("/api/auth/post-signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name, method: args.method }),
+      keepalive: true,
+    });
+  } catch {
+    // best-effort
+  }
+
+  // Programa Indique-e-Ganhe — se o user veio de um link `?ref=CODE`,
+  // o ReferralCapture salvou no localStorage. Aqui registramos a indicacao
+  // (idempotente, falha silenciosa). Se /track der ok, marca tracked +
+  // limpa o code; senao, deixa pra retry no proximo signin.
+  try {
+    if (wasReferralTracked()) return;
+    const code = getStoredReferralCode();
+    if (!code) return;
+    const jwt = await getJwtToken();
+    if (!jwt) return;
+    const ok = await trackReferral(jwt, code);
+    if (ok) {
+      markReferralTracked();
+      clearReferralCode();
+    }
+  } catch {
+    // best-effort
+  }
+}
+
+// Tipo helper pra inferir o retorno de getSession sem importar Better Auth.
+type NeonSessionGetter = NonNullable<
+  Awaited<ReturnType<typeof getAuthClient>>["getSession"]
+>;
 
 // Logo Google oficial — 4 cores. SVG inline pra evitar dependência externa.
 function GoogleIcon() {

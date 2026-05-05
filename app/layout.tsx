@@ -3,6 +3,7 @@ import { Plus_Jakarta_Sans, Instrument_Serif, Geist_Mono } from "next/font/googl
 import { Toaster } from "sonner";
 import { Footer } from "@/components/footer";
 import { MetaPixel } from "@/components/MetaPixel";
+import { ReferralCapture } from "@/components/ReferralCapture";
 import "./globals.css";
 
 const sans = Plus_Jakarta_Sans({
@@ -82,6 +83,7 @@ export default function RootLayout({
         }}
       >
         <MetaPixel pixelId="1708595326965933" />
+        <ReferralCapture />
         {children}
         <Footer />
         <Toaster

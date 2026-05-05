@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { PLANS_RV, type PlanId } from "@/lib/pricing";
 import { useNeonSession, getJwtToken } from "@/lib/auth-client";
 import { AuthDialog } from "@/components/auth-dialog";
+import { getStoredReferralCode } from "@/lib/referral-client";
 
 type PaidPlanId = Exclude<PlanId, "free">;
 
@@ -76,10 +77,17 @@ export default function PricingPage() {
         "Content-Type": "application/json",
       };
       if (jwt) headers["Authorization"] = `Bearer ${jwt}`;
+      // Programa Indique-e-Ganhe — passa o referral code do localStorage
+      // (se houver) pro backend registrar a indicacao + propagar pra
+      // metadata da Stripe session.
+      const referralCode = getStoredReferralCode();
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers,
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({
+          planId,
+          ...(referralCode ? { referralCode } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.url) {

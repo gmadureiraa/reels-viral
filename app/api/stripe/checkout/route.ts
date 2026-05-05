@@ -33,14 +33,15 @@ export async function POST(req: Request) {
   const userId = auth.user.id;
   const userEmail = auth.user.email;
 
-  let body: { planId?: string };
+  let body: { planId?: string; referralCode?: string };
   try {
-    body = (await req.json()) as { planId?: string };
+    body = (await req.json()) as { planId?: string; referralCode?: string };
   } catch {
     return NextResponse.json({ error: "Body JSON inválido" }, { status: 400 });
   }
 
   const planId = body.planId as PlanId | undefined;
+  const trimmedReferralCode = (body.referralCode ?? "").trim().slice(0, 64);
   if (!planId || planId === "free" || !PLANS_RV[planId]) {
     return NextResponse.json(
       { error: "planId deve ser 'basic' ou 'max'" },
@@ -64,6 +65,26 @@ export async function POST(req: Request) {
     }
   }
 
+  // Programa Indique-e-Ganhe — se o user veio com referral code (do
+  // localStorage rv_ref_code) e ainda nao registrou a indicacao, registra
+  // agora (idempotente). Garante que mesmo se o post-signup hook nao rodou
+  // (ex: Google OAuth redirect com browser fechado mid-flight), o codigo
+  // associa antes do checkout completar. Falha nao bloqueia o checkout.
+  if (trimmedReferralCode && dbUrl) {
+    try {
+      const sql = neon(dbUrl);
+      const { recordReferralSignup } = await import("@/lib/referrals");
+      await recordReferralSignup({
+        sql,
+        referralCode: trimmedReferralCode,
+        referredEmail: userEmail || "",
+        referredUserId: userId,
+      });
+    } catch (err) {
+      console.warn("[checkout] recordReferralSignup falhou (nao bloqueia):", err);
+    }
+  }
+
   const reqOrigin = req.headers.get("origin");
   const origin =
     reqOrigin && ALLOWED_ORIGINS.includes(reqOrigin) ? reqOrigin : DEFAULT_ORIGIN;
@@ -82,6 +103,7 @@ export async function POST(req: Request) {
         app: STRIPE_APP_TAG,
         userId,
         planId,
+        ...(trimmedReferralCode ? { referralCode: trimmedReferralCode } : {}),
       },
       // Metadata na SUBSCRIPTION pra eventos futuros (renew, cancel)
       subscription_data: {
@@ -89,6 +111,7 @@ export async function POST(req: Request) {
           app: STRIPE_APP_TAG,
           userId,
           planId,
+          ...(trimmedReferralCode ? { referralCode: trimmedReferralCode } : {}),
         },
       },
       line_items: [

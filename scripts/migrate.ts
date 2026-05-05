@@ -320,6 +320,71 @@ async function main() {
   `);
   console.log("[migrate] ✓ user_profiles");
 
+  // ────────────────────────────────────────────────────────────────────
+  // Referrals (Indique-e-Ganhe — 2026-05-05)
+  // ────────────────────────────────────────────────────────────────────
+  // referral_code unico por user + acumulador de creditos. Tabela
+  // user_referrals registra cada indicacao com transicao pending →
+  // signup → converted. Mecanica: referido ganha 30% off (cupom Stripe
+  // global AMIGOPRO30); referrer ganha R$ 25 em customer.balance.
+  await sql.query(`
+    ALTER TABLE user_profiles
+      ADD COLUMN IF NOT EXISTS referral_code TEXT
+  `);
+  await sql.query(`
+    ALTER TABLE user_profiles
+      ADD COLUMN IF NOT EXISTS referral_credits_cents INTEGER NOT NULL DEFAULT 0
+  `);
+  await sql.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS user_profiles_referral_code_unique
+      ON user_profiles ((lower(referral_code)))
+      WHERE referral_code IS NOT NULL
+  `);
+  console.log("[migrate] ✓ user_profiles.referral_code + referral_credits_cents");
+
+  await sql.query(`
+    CREATE TABLE IF NOT EXISTS user_referrals (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      referrer_user_id TEXT NOT NULL,
+      referred_email TEXT NOT NULL,
+      referred_user_id TEXT,
+      referral_code TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'signup', 'converted', 'expired')),
+      signup_at TIMESTAMPTZ,
+      conversion_at TIMESTAMPTZ,
+      stripe_session_id TEXT,
+      reward_amount_cents INTEGER NOT NULL DEFAULT 0,
+      reward_applied BOOLEAN NOT NULL DEFAULT FALSE,
+      reward_applied_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  console.log("[migrate] ✓ user_referrals");
+
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS user_referrals_referrer_idx
+      ON user_referrals (referrer_user_id)
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS user_referrals_code_idx
+      ON user_referrals (referral_code)
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS user_referrals_status_idx
+      ON user_referrals (status)
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS user_referrals_referred_user_idx
+      ON user_referrals (referred_user_id)
+  `);
+  await sql.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS user_referrals_pair_unique
+      ON user_referrals (referrer_user_id, referred_user_id)
+      WHERE referred_user_id IS NOT NULL
+  `);
+  console.log("[migrate] ✓ user_referrals indexes");
+
   // Sanity: lista as tabelas criadas no schema public.
   const rows = await sql.query(`
     SELECT table_name FROM information_schema.tables

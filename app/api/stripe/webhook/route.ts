@@ -19,6 +19,8 @@ import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { stripe, STRIPE_APP_TAG, type PlanId } from "@/lib/stripe";
 import { neon } from "@neondatabase/serverless";
+import { fireResendEvent } from "@/lib/resend";
+import { applyReferralReward } from "@/lib/referrals";
 
 export const runtime = "nodejs";
 // Stripe webhook precisa do raw body pra verificar a signature.
@@ -85,6 +87,9 @@ export async function POST(req: Request) {
         break;
       case "customer.subscription.deleted":
         await handleSubscriptionDeleted(event.data.object as Stripe.Subscription);
+        break;
+      case "invoice.payment_failed":
+        await handleInvoicePaymentFailed(event.data.object as Stripe.Invoice);
         break;
       default:
         // Eventos não relevantes (invoice.*, etc) — ignora silenciosamente
@@ -178,6 +183,52 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   `;
 
   console.log(`[webhook] sub criada/atualizada user=${userId} plan=${planId}`);
+
+  // Programa Indique-e-Ganhe — se a session veio com referralCode (ou
+  // simplesmente se o user tem uma indicacao pendente em user_referrals),
+  // marca como converted, aplica R$ 25 de credito Stripe no balance do
+  // referrer e dispara email transacional. Idempotente (reward_applied
+  // flag) e silencioso em qualquer falha pra nao quebrar o webhook.
+  // Mesmo sem referralCode na metadata, tenta aplicar pelo referredUserId
+  // — cobre o caso onde o user fez signup com codigo (ja existe linha
+  // pending/signup) mas o checkout foi sem o code passado adiante.
+  try {
+    const result = await applyReferralReward({
+      sql,
+      referredUserId: userId,
+      stripeSessionId: session.id,
+    });
+    if (!result.ok && result.reason && result.reason !== "no_referral") {
+      console.warn(
+        "[webhook] applyReferralReward nao aplicado:",
+        result.reason,
+      );
+    }
+  } catch (err) {
+    console.error("[webhook] applyReferralReward exception:", err);
+  }
+
+  // Fire reels.upgraded event no Resend pra trigger automacao
+  // (welcome paid, onboarding step-up, etc). Best-effort.
+  const email = await resolveCustomerEmail(customerId);
+  const amount =
+    typeof session.amount_total === "number"
+      ? session.amount_total / 100
+      : null;
+  // Stripe 2024+: discount on session breakdown nao expoe coupon id
+  // direto via tipos. Acessamos via cast — fallback null se ausente.
+  const coupon =
+    ((session.total_details?.breakdown?.discounts?.[0] as unknown as {
+      discount?: { coupon?: { id?: string } };
+    })?.discount?.coupon?.id) ?? null;
+  await fireResendEvent("reels.upgraded", {
+    email,
+    user_id: userId,
+    plan: planId,
+    amount,
+    currency: session.currency ?? null,
+    coupon,
+  });
 }
 
 async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
@@ -187,6 +238,14 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
   if (!userId || !planId) return;
 
   const sql = getSql();
+  // Le plano anterior ANTES do UPDATE pra detectar upgrade vs downgrade.
+  const prev = (await sql`
+    SELECT plan FROM user_subscriptions
+     WHERE stripe_subscription_id = ${sub.id}
+     LIMIT 1
+  `) as Array<{ plan: string }>;
+  const prevPlan = prev[0]?.plan ?? null;
+
   await sql`
     UPDATE user_subscriptions
        SET plan = ${planId},
@@ -199,15 +258,120 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
      WHERE stripe_subscription_id = ${sub.id}
   `;
   console.log(`[webhook] sub atualizada ${sub.id} status=${sub.status}`);
+
+  // Resend event:
+  // - downgrade pra free → reels.canceled
+  // - upgrade pra plano pago diferente → reels.upgraded
+  // - mesmo plano (renew, etc) → silencio
+  const customerId =
+    typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+  const email = await resolveCustomerEmail(customerId);
+
+  if (planId === "free" && prevPlan && prevPlan !== "free") {
+    await fireResendEvent("reels.canceled", {
+      email,
+      user_id: userId,
+      previous_plan: prevPlan,
+      reason: "downgrade",
+    });
+  } else if (prevPlan && prevPlan !== planId && planId !== "free") {
+    await fireResendEvent("reels.upgraded", {
+      email,
+      user_id: userId,
+      plan: planId,
+      previous_plan: prevPlan,
+    });
+  }
 }
 
 async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
   if (sub.metadata?.app !== STRIPE_APP_TAG) return;
   const sql = getSql();
+  // Pega o user_id antes de degradar pra alimentar o event payload.
+  const rows = (await sql`
+    SELECT user_id FROM user_subscriptions
+     WHERE stripe_subscription_id = ${sub.id}
+     LIMIT 1
+  `) as Array<{ user_id: string }>;
+  const userId = rows[0]?.user_id ?? sub.metadata.userId ?? null;
+
   await sql`
     UPDATE user_subscriptions
        SET plan = 'free', status = 'canceled', updated_at = NOW()
      WHERE stripe_subscription_id = ${sub.id}
   `;
   console.log(`[webhook] sub cancelada ${sub.id} → degrade pra free`);
+
+  const customerId =
+    typeof sub.customer === "string" ? sub.customer : sub.customer?.id ?? null;
+  const email = await resolveCustomerEmail(customerId);
+  await fireResendEvent("reels.canceled", {
+    email,
+    user_id: userId,
+    reason: "subscription_deleted",
+  });
+}
+
+async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
+  // Filtra: o invoice nao carrega o nosso metadata.app diretamente — pega
+  // do subscription associado. Se nao bate, ignora (provavelmente SV).
+  const subscriptionId =
+    typeof (invoice as unknown as { subscription?: string | Stripe.Subscription })
+      .subscription === "string"
+      ? ((invoice as unknown as { subscription: string }).subscription)
+      : null;
+  if (!subscriptionId) return;
+
+  let sub: Stripe.Subscription;
+  try {
+    sub = await stripe.subscriptions.retrieve(subscriptionId);
+  } catch (err) {
+    console.warn("[webhook] payment_failed retrieve sub:", err);
+    return;
+  }
+  if (sub.metadata?.app !== STRIPE_APP_TAG) return;
+
+  const userId = sub.metadata.userId ?? null;
+  const planId = (sub.metadata.planId as PlanId | undefined) ?? null;
+  const customerId =
+    typeof invoice.customer === "string"
+      ? invoice.customer
+      : invoice.customer?.id ?? null;
+  const email =
+    invoice.customer_email ?? (await resolveCustomerEmail(customerId));
+  const amount =
+    typeof invoice.amount_due === "number" ? invoice.amount_due / 100 : null;
+  const attemptCount =
+    (invoice as unknown as { attempt_count?: number }).attempt_count ?? null;
+
+  await fireResendEvent("reels.payment.failed", {
+    email,
+    user_id: userId,
+    plan: planId,
+    amount,
+    currency: invoice.currency ?? null,
+    attempt_count: attemptCount,
+  });
+  console.log(
+    `[webhook] payment_failed sub=${subscriptionId} user=${userId} attempt=${attemptCount}`,
+  );
+}
+
+/**
+ * Busca o email do customer no Stripe. Retorna null se Stripe falhar ou
+ * customer nao tiver email. Usado pra alimentar events do Resend, que
+ * precisam do email pra disparar a automacao certa.
+ */
+async function resolveCustomerEmail(
+  customerId: string | null,
+): Promise<string | null> {
+  if (!customerId) return null;
+  try {
+    const c = await stripe.customers.retrieve(customerId);
+    if ((c as Stripe.DeletedCustomer).deleted) return null;
+    return (c as Stripe.Customer).email ?? null;
+  } catch (err) {
+    console.warn("[webhook] resolveCustomerEmail failed:", err);
+    return null;
+  }
 }

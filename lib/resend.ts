@@ -103,3 +103,33 @@ async function findExistingContact(
     return { ok: false, error: msg };
   }
 }
+
+/**
+ * Dispara um event customizado no Resend (fire-and-forget).
+ *
+ * Eventos sao usados como triggers de automacao no painel Resend
+ * (ex: reels.upgraded → manda email de boas-vindas pro plano pago).
+ *
+ * Falha silenciosa: se Resend cair ou key faltar, segue o jogo. Nao
+ * bloqueia handler do webhook nem fluxo de signup.
+ *
+ * Endpoint nao tem SDK ainda — chamada via fetch direto.
+ */
+export async function fireResendEvent(
+  name: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  if (!process.env.RESEND_API_KEY) return;
+  try {
+    await fetch("https://api.resend.com/events", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name, data }),
+    });
+  } catch (e) {
+    console.warn("[resend event] failed:", name, e);
+  }
+}

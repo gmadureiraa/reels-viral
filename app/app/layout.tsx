@@ -23,6 +23,7 @@ import {
   Menu,
   X,
   CreditCard,
+  Gift,
   Settings as SettingsIcon,
 } from "lucide-react";
 import {
@@ -44,6 +45,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/app", label: "Adaptar reel", icon: PlusCircle },
   { href: "/app/meus-roteiros", label: "Meus roteiros", icon: History },
   { href: "/app/biblioteca", label: "Biblioteca", icon: Library, badge: "PRO" },
+  { href: "/app/ajustes/indicacoes", label: "Indique e ganhe", icon: Gift },
   { href: "/app/ajustes", label: "Ajustes", icon: SettingsIcon },
   { href: "/app/precos", label: "Planos", icon: CreditCard },
 ];
@@ -416,8 +418,15 @@ function SidebarContent({
       {/* Nav */}
       <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {navItems.map(({ href, label, icon: Icon, badge }) => {
+          // /app/ajustes precisa ser exato pra nao "engolir" as subrotas
+          // (/app/ajustes/indicacoes). Se uma subrota mais especifica
+          // bater, ela ativa, mas /app/ajustes nao ativa em cima dela.
           const active =
-            href === "/app" ? pathname === "/app" : pathname.startsWith(href);
+            href === "/app"
+              ? pathname === "/app"
+              : href === "/app/ajustes"
+                ? pathname === "/app/ajustes"
+                : pathname.startsWith(href);
           return (
             <Link
               key={href}
