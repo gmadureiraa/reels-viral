@@ -54,7 +54,7 @@ const CategorySchema = z.object({
     .array(z.enum(REEL_CATEGORIES))
     .min(1)
     .max(3),
-  reasoning: z.string().max(280),
+  reasoning: z.string().max(1000),
 });
 
 const SYSTEM_PROMPT = `Você é um classificador de reels virais. Recebe metadata de um reel (resumo, estrutura, transcrição) e responde com 1 a 3 categorias da taxonomia abaixo.

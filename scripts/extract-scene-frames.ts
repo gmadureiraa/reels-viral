@@ -26,7 +26,11 @@
  */
 
 import { neon } from "@neondatabase/serverless";
-import { fetchInstagramPost, downloadReelVideo } from "../lib/apify";
+import {
+  fetchInstagramPost,
+  fetchTikTokVideo,
+  downloadReelVideo,
+} from "../lib/apify";
 import { writeFile, unlink, readFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -129,8 +133,11 @@ async function processReel(row: Row): Promise<{ frames: number }> {
   const estrutura = row.analysis_json.estrutura;
   const duration = row.duration_seconds ?? 60;
 
-  // 1. Apify scrape (com cache do RV — 24h)
-  const item = await fetchInstagramPost(row.ig_url);
+  // 1. Scrape — escolhe IG ou TikTok pelo host
+  const isTikTok = /tiktok\.com/i.test(row.ig_url);
+  const item = isTikTok
+    ? await fetchTikTokVideo(row.ig_url)
+    : await fetchInstagramPost(row.ig_url);
   if (item.type !== "Video" || !item.videoUrl) {
     throw new Error(`não é video (type=${item.type})`);
   }
