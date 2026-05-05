@@ -71,7 +71,13 @@ export async function GET(req: Request) {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, immutable",
+        // Cache em 3 camadas:
+        //  - browser: 1 dia + immutable (URL IG tem token único)
+        //  - CDN Vercel: 1 dia (s-maxage)
+        //  - CDN Vercel-specific: backup pro override
+        "Cache-Control": "public, max-age=86400, s-maxage=86400, immutable",
+        "CDN-Cache-Control": "public, s-maxage=86400, immutable",
+        "Vercel-CDN-Cache-Control": "public, s-maxage=86400, immutable",
       },
     });
   } catch (err) {

@@ -122,7 +122,8 @@ export async function GET(req: Request) {
   }
 
   // Free user: scrub campos sensíveis server-side (defense in depth — UI
-  // já borra, mas evita inspect DOM bypass).
+  // já borra, mas evita inspect DOM bypass). thumb_url também ofusca pra
+  // não vazar imagem em cleartext via DOM inspect.
   if (!unlocked) {
     rows = rows.map((r) => ({
       ...r,
@@ -130,6 +131,7 @@ export async function GET(req: Request) {
       short_code: null,
       caption: null,
       hook_pattern: null,
+      thumb_url: null,
       author_handle: r.author_handle ? maskHandle(r.author_handle) : null,
     }));
   }

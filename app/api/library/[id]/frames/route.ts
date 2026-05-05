@@ -62,7 +62,8 @@ export async function GET(
         { frames: [], message: "Reel sem frames extraídos" },
         {
           status: 200,
-          headers: { "Cache-Control": "private, max-age=86400" },
+          // Curto pra dar chance de re-fetch quando frames forem adicionados.
+          headers: { "Cache-Control": "private, max-age=300" },
         },
       );
     }
@@ -71,7 +72,9 @@ export async function GET(
       { frames: rows[0].scene_frames ?? [] },
       {
         status: 200,
-        // Frames são imutáveis pro reel — cache agressivo no client.
+        // Frames são imutáveis pro reel — cache agressivo no browser.
+        // private (não pode ser CDN-cached porque o JWT do user pode mudar
+        // a resposta no futuro se adicionarmos limite por plano).
         headers: { "Cache-Control": "private, max-age=86400, immutable" },
       },
     );
