@@ -58,6 +58,7 @@ interface LibraryReel {
   template_type: string | null;
   hook_pattern: string | null;
   featured: boolean;
+  categories: string[];
   sourceIdea?: SourceIdeaRef | null;
 }
 
@@ -88,6 +89,7 @@ interface LibraryReelDetail {
   analyzedAt: string | null;
   sourceIdea?: SourceIdeaRef | null;
   sceneFrames?: SceneFrame[] | null;
+  categories?: string[];
 }
 
 interface ApiResponse {
@@ -132,13 +134,19 @@ interface UserProfile {
   ctaPadrao: string | null;
 }
 
-const TEMPLATES: Array<{ id: string; label: string }> = [
-  { id: "all", label: "Todos" },
-  { id: "hook_face_cam", label: "Hook face-cam" },
-  { id: "transition", label: "Transição" },
-  { id: "duet", label: "Dueto" },
-  { id: "pov", label: "POV" },
-  { id: "tutorial", label: "Tutorial" },
+// Taxonomia canônica — alinhada com scripts/classify-reels.ts
+const CATEGORIES: Array<{ id: string; label: string; emoji: string }> = [
+  { id: "all", label: "Todos", emoji: "✨" },
+  { id: "Tutorial", label: "Tutorial", emoji: "🎓" },
+  { id: "Storytelling", label: "Storytelling", emoji: "📖" },
+  { id: "Antes/Depois", label: "Antes/Depois", emoji: "🔄" },
+  { id: "Lista", label: "Lista", emoji: "📝" },
+  { id: "Polêmica", label: "Polêmica", emoji: "🎯" },
+  { id: "Bastidor", label: "Bastidor", emoji: "🎬" },
+  { id: "Confessional", label: "Confessional", emoji: "💭" },
+  { id: "Mito vs Verdade", label: "Mito vs Verdade", emoji: "⚖️" },
+  { id: "Demonstração", label: "Demonstração", emoji: "🛠️" },
+  { id: "Humor", label: "Humor", emoji: "😂" },
 ];
 
 // Placeholder quando biblioteca tá vazia / borrada
@@ -152,9 +160,10 @@ const PLACEHOLDER_REELS: LibraryReel[] = Array.from({ length: 8 }, (_, i) => ({
   likes_count: 50_000 + Math.round(Math.random() * 800_000),
   views_count: 200_000 + Math.round(Math.random() * 3_000_000),
   duration_seconds: 15 + Math.round(Math.random() * 45),
-  template_type: TEMPLATES[1 + (i % (TEMPLATES.length - 1))].id,
+  template_type: null,
   hook_pattern: null,
   featured: i < 3,
+  categories: [CATEGORIES[1 + (i % (CATEGORIES.length - 1))].label],
 }));
 
 
@@ -262,7 +271,7 @@ export default function LibraryPage() {
     setLoading(true);
     let cancelled = false;
     const reelsParams = new URLSearchParams();
-    if (filter !== "all") reelsParams.set("template", filter);
+    if (filter !== "all") reelsParams.set("category", filter);
     reelsParams.set("limit", "60");
     const ideasLimit = showAllIdeas ? 101 : 16;
     (async () => {
@@ -538,12 +547,12 @@ export default function LibraryPage() {
           </div>
         )}
 
-        {/* Filtros de template — relevantes só pros reels */}
+        {/* Filtros por categoria — relevantes só pros reels analisados */}
         {(kindFilter === "reels" || kindFilter === "all") && (
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: 6,
             marginBottom: 24,
             overflowX: "auto",
             paddingBottom: 4,
@@ -551,29 +560,37 @@ export default function LibraryPage() {
             pointerEvents: unlocked ? "auto" : "none",
           }}
         >
-          {TEMPLATES.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setFilter(t.id)}
-              className="rv-mono"
-              style={{
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: "0.14em",
-                textTransform: "uppercase",
-                padding: "8px 14px",
-                background:
-                  filter === t.id ? "var(--color-rv-ink)" : "transparent",
-                color: filter === t.id ? "white" : "var(--color-rv-ink)",
-                border: "1.5px solid var(--color-rv-ink)",
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+          {CATEGORIES.map((t) => {
+            const active = filter === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setFilter(t.id)}
+                className="rv-mono"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.13em",
+                  textTransform: "uppercase",
+                  padding: "8px 12px",
+                  background: active ? "var(--color-rv-ink)" : "white",
+                  color: active ? "white" : "var(--color-rv-ink)",
+                  border: "1.5px solid var(--color-rv-ink)",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: active ? "2px 2px 0 0 var(--color-rv-rec)" : "none",
+                  transition: "all 0.12s",
+                }}
+              >
+                <span style={{ fontSize: 12 }}>{t.emoji}</span>
+                {t.label}
+              </button>
+            );
+          })}
         </div>
         )}
 
@@ -910,17 +927,50 @@ function ReelCard({
         }}
       >
         <div
-          className="rv-mono"
           style={{
-            fontSize: 9,
-            fontWeight: 700,
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            color: "var(--color-rv-rec)",
-            marginBottom: 2,
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 3,
+            marginBottom: 4,
+            minHeight: 16,
           }}
         >
-          {reel.template_type?.replace(/_/g, " ") ?? "—"}
+          {reel.categories && reel.categories.length > 0 ? (
+            reel.categories.slice(0, 2).map((cat) => {
+              const meta = CATEGORIES.find((c) => c.id === cat);
+              return (
+                <span
+                  key={cat}
+                  className="rv-mono"
+                  style={{
+                    fontSize: 8.5,
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    padding: "1.5px 5px",
+                    background: "rgba(255, 61, 46, 0.12)",
+                    color: "var(--color-rv-rec)",
+                    border: "1px solid rgba(255, 61, 46, 0.25)",
+                  }}
+                >
+                  {meta?.emoji} {cat}
+                </span>
+              );
+            })
+          ) : reel.template_type ? (
+            <span
+              className="rv-mono"
+              style={{
+                fontSize: 9,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: "var(--color-rv-rec)",
+              }}
+            >
+              {reel.template_type.replace(/_/g, " ")}
+            </span>
+          ) : null}
         </div>
         <div
           style={{

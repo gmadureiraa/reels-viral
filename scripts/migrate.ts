@@ -251,7 +251,12 @@ async function main() {
       ADD COLUMN IF NOT EXISTS analysis_json JSONB,
       ADD COLUMN IF NOT EXISTS analyzed_at TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS source_idea_id UUID,
-      ADD COLUMN IF NOT EXISTS scene_frames JSONB
+      ADD COLUMN IF NOT EXISTS scene_frames JSONB,
+      ADD COLUMN IF NOT EXISTS categories TEXT[]
+  `);
+  await sql.query(`
+    CREATE INDEX IF NOT EXISTS library_reels_categories_idx
+      ON library_reels USING GIN (categories)
   `);
   await sql.query(`
     CREATE INDEX IF NOT EXISTS library_reels_source_idea_idx

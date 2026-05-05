@@ -34,6 +34,7 @@ interface LibraryRow {
   template_type: string | null;
   hook_pattern: string | null;
   featured: boolean;
+  categories: string[] | null;
   source_idea_id: string | null;
   source_idea_position: number | null;
   source_idea_title: string | null;
@@ -49,6 +50,9 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
+  // Filtros: ?category=Tutorial filtra pelo array categories. Mantém
+  // ?template= legacy só pra compatibilidade.
+  const category = url.searchParams.get("category");
   const template = url.searchParams.get("template");
   // Default 8 (entrega rápida + first-screen completa); user clica "Ver mais" pra carregar até 60.
   const limitRaw = Number(url.searchParams.get("limit") ?? 8);
@@ -69,32 +73,48 @@ export async function GET(req: Request) {
   const sql = neon(dbUrl);
   let rows: LibraryRow[];
   try {
-    rows = template
-      ? ((await sql`
-          SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
-                 r.likes_count, r.views_count, r.duration_seconds, r.template_type,
-                 r.hook_pattern, r.featured,
-                 r.source_idea_id::text AS source_idea_id,
-                 i.position AS source_idea_position,
-                 i.title AS source_idea_title
-            FROM library_reels r
-            LEFT JOIN library_ideas i ON i.id = r.source_idea_id
-           WHERE r.template_type = ${template}
-           ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
-           LIMIT ${limit}
-        `) as LibraryRow[])
-      : ((await sql`
-          SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
-                 r.likes_count, r.views_count, r.duration_seconds, r.template_type,
-                 r.hook_pattern, r.featured,
-                 r.source_idea_id::text AS source_idea_id,
-                 i.position AS source_idea_position,
-                 i.title AS source_idea_title
-            FROM library_reels r
-            LEFT JOIN library_ideas i ON i.id = r.source_idea_id
-           ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
-           LIMIT ${limit}
-        `) as LibraryRow[]);
+    if (category) {
+      rows = (await sql`
+        SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
+               r.likes_count, r.views_count, r.duration_seconds, r.template_type,
+               r.hook_pattern, r.featured, r.categories,
+               r.source_idea_id::text AS source_idea_id,
+               i.position AS source_idea_position,
+               i.title AS source_idea_title
+          FROM library_reels r
+          LEFT JOIN library_ideas i ON i.id = r.source_idea_id
+         WHERE ${category} = ANY(r.categories)
+         ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
+         LIMIT ${limit}
+      `) as LibraryRow[];
+    } else if (template) {
+      rows = (await sql`
+        SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
+               r.likes_count, r.views_count, r.duration_seconds, r.template_type,
+               r.hook_pattern, r.featured, r.categories,
+               r.source_idea_id::text AS source_idea_id,
+               i.position AS source_idea_position,
+               i.title AS source_idea_title
+          FROM library_reels r
+          LEFT JOIN library_ideas i ON i.id = r.source_idea_id
+         WHERE r.template_type = ${template}
+         ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
+         LIMIT ${limit}
+      `) as LibraryRow[];
+    } else {
+      rows = (await sql`
+        SELECT r.id::text, r.ig_url, r.short_code, r.author_handle, r.caption, r.thumb_url,
+               r.likes_count, r.views_count, r.duration_seconds, r.template_type,
+               r.hook_pattern, r.featured, r.categories,
+               r.source_idea_id::text AS source_idea_id,
+               i.position AS source_idea_position,
+               i.title AS source_idea_title
+          FROM library_reels r
+          LEFT JOIN library_ideas i ON i.id = r.source_idea_id
+         ORDER BY r.featured DESC, r.likes_count DESC NULLS LAST
+         LIMIT ${limit}
+      `) as LibraryRow[];
+    }
   } catch (err) {
     // Tabela não migrada ainda — retorna vazio
     console.warn("[library] query failed:", err);
@@ -114,12 +134,13 @@ export async function GET(req: Request) {
     }));
   }
 
-  // Map source_idea_* → sourceIdea object
+  // Map source_idea_* → sourceIdea object + normaliza categories
   const reels = rows.map((r) => ({
     id: r.id,
     ig_url: r.ig_url,
     short_code: r.short_code,
     author_handle: r.author_handle,
+    categories: Array.isArray(r.categories) ? r.categories : [],
     caption: r.caption,
     thumb_url: r.thumb_url,
     likes_count: r.likes_count,

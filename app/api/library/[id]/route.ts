@@ -54,6 +54,7 @@ interface ReelRow {
   source_idea_position: number | null;
   source_idea_title: string | null;
   scene_frames: SceneFrame[] | null;
+  categories: string[] | null;
 }
 
 function getSql() {
@@ -94,7 +95,7 @@ export async function GET(
              r.source_idea_id::text AS source_idea_id,
              i.position AS source_idea_position,
              i.title AS source_idea_title,
-             r.scene_frames
+             r.scene_frames, r.categories
         FROM library_reels r
         LEFT JOIN library_ideas i ON i.id = r.source_idea_id
        WHERE r.id = ${id}::uuid
@@ -211,6 +212,7 @@ export async function GET(
             }
           : null,
       sceneFrames: Array.isArray(reel.scene_frames) ? reel.scene_frames : null,
+      categories: Array.isArray(reel.categories) ? reel.categories : [],
     },
   });
 }
