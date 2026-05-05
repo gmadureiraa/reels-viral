@@ -19,6 +19,17 @@ import { neon } from "@neondatabase/serverless";
 export const runtime = "nodejs";
 
 const DEFAULT_ORIGIN = "https://reels-viral.vercel.app";
+
+/**
+ * Resolve Price ID canônico do Stripe pra um planId. Setado via env vars
+ * no Vercel (STRIPE_PRICE_RV_BASIC_MONTH / STRIPE_PRICE_RV_MAX_MONTH).
+ * Quando ausente, checkout cai no fallback inline price_data.
+ */
+function priceIdFor(planId: string): string | undefined {
+  if (planId === "basic") return process.env.STRIPE_PRICE_RV_BASIC_MONTH;
+  if (planId === "max") return process.env.STRIPE_PRICE_RV_MAX_MONTH;
+  return undefined;
+}
 const ALLOWED_ORIGINS = [
   "https://reels-viral.vercel.app",
   "https://reels.kaleidos.com.br",
@@ -114,19 +125,25 @@ export async function POST(req: Request) {
           ...(trimmedReferralCode ? { referralCode: trimmedReferralCode } : {}),
         },
       },
+      // Prefere Price ID canônico quando env var setada — habilita troca de
+      // plano via Stripe Billing Portal e mantém Stripe catalog limpo.
+      // Fallback pra inline price_data se env var ausente (dev local sem
+      // configuração ou se algum dia o Price ID for revogado).
       line_items: [
-        {
-          price_data: {
-            currency: "brl",
-            product_data: {
-              name: `Reels Viral — ${plan.name} by Kaleidos Digital`,
-              description: plan.features.slice(0, 4).join(" · "),
+        priceIdFor(planId)
+          ? { price: priceIdFor(planId)!, quantity: 1 }
+          : {
+              price_data: {
+                currency: "brl",
+                product_data: {
+                  name: `Reels Viral — ${plan.name} by Kaleidos Digital`,
+                  description: plan.features.slice(0, 4).join(" · "),
+                },
+                unit_amount: plan.priceMonthly,
+                recurring: { interval: "month" as const },
+              },
+              quantity: 1,
             },
-            unit_amount: plan.priceMonthly,
-            recurring: { interval: "month" },
-          },
-          quantity: 1,
-        },
       ],
       allow_promotion_codes: true,
       // Volta pra /app/precos pra dar feedback (toast + plano atualizado).
