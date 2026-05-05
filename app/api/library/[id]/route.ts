@@ -25,15 +25,6 @@ import type { SourceAnalysis } from "@/lib/types";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-interface SceneFrame {
-  label: string;
-  papel: string;
-  tempo: string;
-  startSec: number;
-  texto: string;
-  dataUrl: string;
-}
-
 interface ReelRow {
   id: string;
   ig_url: string;
@@ -53,7 +44,7 @@ interface ReelRow {
   source_idea_id: string | null;
   source_idea_position: number | null;
   source_idea_title: string | null;
-  scene_frames: SceneFrame[] | null;
+  has_scene_frames: boolean;
   categories: string[] | null;
 }
 
@@ -95,7 +86,8 @@ export async function GET(
              r.source_idea_id::text AS source_idea_id,
              i.position AS source_idea_position,
              i.title AS source_idea_title,
-             r.scene_frames, r.categories
+             (r.scene_frames IS NOT NULL) AS has_scene_frames,
+             r.categories
         FROM library_reels r
         LEFT JOIN library_ideas i ON i.id = r.source_idea_id
        WHERE r.id = ${id}::uuid
@@ -211,7 +203,7 @@ export async function GET(
               title: reel.source_idea_title ?? "",
             }
           : null,
-      sceneFrames: Array.isArray(reel.scene_frames) ? reel.scene_frames : null,
+      hasSceneFrames: Boolean(reel.has_scene_frames),
       categories: Array.isArray(reel.categories) ? reel.categories : [],
     },
   });

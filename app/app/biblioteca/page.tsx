@@ -88,7 +88,7 @@ interface LibraryReelDetail {
   analysis: SourceAnalysis | null;
   analyzedAt: string | null;
   sourceIdea?: SourceIdeaRef | null;
-  sceneFrames?: SceneFrame[] | null;
+  hasSceneFrames?: boolean;
   categories?: string[];
 }
 
@@ -1042,6 +1042,7 @@ function ReelDetailModal({
   profileReady: boolean;
 }) {
   const [detail, setDetail] = useState<LibraryReelDetail | null>(null);
+  const [frames, setFrames] = useState<SceneFrame[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1052,23 +1053,32 @@ function ReelDetailModal({
     return String(n);
   };
 
+  // Carrega detalhe (rápido, ~5KB) e frames (~155KB) em paralelo. Frames
+  // ficam em endpoint separado pra não inflar o detail response.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError(null);
+      setFrames(null);
       try {
         const jwt = await getJwtToken();
-        const res = await fetch(`/api/library/${reel.id}`, {
-          headers: jwt ? { Authorization: `Bearer ${jwt}` } : undefined,
-        });
-        const data = await res.json();
+        const headers = jwt ? { Authorization: `Bearer ${jwt}` } : undefined;
+        const [detailRes, framesRes] = await Promise.all([
+          fetch(`/api/library/${reel.id}`, { headers }),
+          fetch(`/api/library/${reel.id}/frames`, { headers }),
+        ]);
+        const detailData = await detailRes.json();
         if (cancelled) return;
-        if (!res.ok) {
-          setError(data.error ?? `Erro ${res.status}`);
+        if (!detailRes.ok) {
+          setError(detailData.error ?? `Erro ${detailRes.status}`);
           return;
         }
-        setDetail(data.reel as LibraryReelDetail);
+        setDetail(detailData.reel as LibraryReelDetail);
+        if (framesRes.ok) {
+          const fd = (await framesRes.json()) as { frames: SceneFrame[] };
+          if (!cancelled) setFrames(fd.frames ?? []);
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : "Erro");
@@ -1292,16 +1302,16 @@ function ReelDetailModal({
               </Section>
 
               {/* Cenas (frames extraídos via ffmpeg) */}
-              {detail.sceneFrames && detail.sceneFrames.length > 0 && (
+              {frames && frames.length > 0 && (
                 <Section title="Cenas-chave">
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: `repeat(${detail.sceneFrames.length}, 1fr)`,
+                      gridTemplateColumns: `repeat(${frames.length}, 1fr)`,
                       gap: 6,
                     }}
                   >
-                    {detail.sceneFrames.map((frame) => (
+                    {frames.map((frame) => (
                       <div
                         key={frame.papel}
                         style={{
