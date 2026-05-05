@@ -9,9 +9,13 @@
     "app/api/lead/route.ts": { "maxDuration": 15 },
     "app/api/lead/feedback/route.ts": { "maxDuration": 5 },
     "app/api/unsubscribe/route.ts": { "maxDuration": 5 },
-    "app/api/cron/lead-automation/route.ts": { "maxDuration": 60 }
+    "app/api/cron/lead-automation/route.ts": { "maxDuration": 60 },
+    "app/api/cron/idle-5d/route.ts": { "maxDuration": 60 },
+    "app/api/cron/power-user/route.ts": { "maxDuration": 60 }
   },
   "crons": [
-    { "path": "/api/cron/lead-automation", "schedule": "0 13 * * *" }
+    { "path": "/api/cron/lead-automation", "schedule": "0 13 * * *" },
+    { "path": "/api/cron/idle-5d", "schedule": "0 13 * * *" },
+    { "path": "/api/cron/power-user", "schedule": "0 14 * * *" }
   ]
 }

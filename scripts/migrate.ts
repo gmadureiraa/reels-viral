@@ -321,6 +321,19 @@ async function main() {
   console.log("[migrate] ✓ user_profiles");
 
   // ────────────────────────────────────────────────────────────────────
+  // Lifecycle email dedup (idle 5d + power user) — 2026-05-05
+  // ────────────────────────────────────────────────────────────────────
+  // Carimbamos o timestamp do ultimo disparo de cada evento Resend pra
+  // evitar reenvio. Cron idle-5d chega de novo se passar 30 dias; cron
+  // power-user reabre no inicio de cada mes (DATE_TRUNC checa).
+  await sql.query(`
+    ALTER TABLE user_profiles
+      ADD COLUMN IF NOT EXISTS last_idle_5d_email_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS last_power_user_email_at TIMESTAMPTZ
+  `);
+  console.log("[migrate] ✓ user_profiles.last_idle_5d_email_at + last_power_user_email_at");
+
+  // ────────────────────────────────────────────────────────────────────
   // Referrals (Indique-e-Ganhe — 2026-05-05)
   // ────────────────────────────────────────────────────────────────────
   // referral_code unico por user + acumulador de creditos. Tabela
