@@ -114,6 +114,82 @@ export async function getJwtToken(): Promise<string | null> {
 }
 
 /**
+ * Sign-out completo e idempotente.
+ *
+ * Histórico do bug (mesmo do Radar Viral): `client.signOut()` sozinho deixa
+ * resíduos:
+ *  - cache em memória do Better Auth (BETTER_AUTH_METHODS_CACHE) sobrevive
+ *    entre rotas SPA porque é singleton de módulo
+ *  - localStorage `better-auth.message` (broadcast channel) fica com
+ *    SIGN_IN antigo, fazendo outras tabs reaproveitarem sessão
+ *  - flags `rv:scripts:v1`, `rv_ref_code`, etc. continuam, dando impressão
+ *    de "logado" no próximo signin
+ *  - cookie cross-origin pode demorar pra invalidar — landing redirecionava
+ *    pra /app antes do `getSession()` retornar null
+ *
+ * Fix: aguarda signOut, força clear de TUDO local, descarta o cliente
+ * cacheado e faz hard navigation com flag `?signed_out=1` que a landing
+ * usa pra suprimir auto-redirect por alguns segundos.
+ */
+export async function signOutAndReset(): Promise<void> {
+  // 1. Tenta sign-out remoto (deleta cookie + sessão no DB)
+  if (isAuthConfigured()) {
+    try {
+      const client = await getAuthClient();
+      await client.signOut();
+    } catch {
+      // Se falhar (network, etc.), seguimos com clear local — melhor
+      // sair localmente do que deixar o user preso.
+    }
+  }
+
+  // 2. Descarta cliente cacheado pra forçar nova instância
+  cachedClient = null;
+  pendingPromise = null;
+
+  if (typeof window !== "undefined") {
+    // 3. Limpa qualquer chave de auth/Better-Auth/Reels Viral do
+    //    localStorage. Better Auth usa `better-auth.message` pro broadcast
+    //    channel — limpar evita que eventos antigos tipo SIGN_IN sejam
+    //    replayed pra outras tabs após o reload.
+    //    Reels Viral usa prefixes `rv:` (scripts/migration) e `rv_` (ref
+    //    code, device id, pending brief, first reel flag).
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (!key) continue;
+        if (
+          key.startsWith("better-auth") ||
+          key.startsWith("rv_") ||
+          key.startsWith("rv:") ||
+          key.startsWith("reels-") ||
+          key === "neon-auth-session" ||
+          key === "ba-session"
+        ) {
+          keysToRemove.push(key);
+        }
+      }
+      for (const key of keysToRemove) window.localStorage.removeItem(key);
+    } catch {
+      /* localStorage bloqueado, segue */
+    }
+
+    // 4. Limpa sessionStorage também (oauth verifier, pending flags,
+    //    migration flag)
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      /* ignore */
+    }
+
+    // 5. Hard navigation com flag pra landing suprimir auto-redirect.
+    //    `replace` (não `assign`) pra que o back-button não volte pra /app.
+    window.location.replace("/?signed_out=1");
+  }
+}
+
+/**
  * Hook simples baseado em getSession() — load 1x ao montar.
  * Refresh manual via `refresh()` depois de sign-in/sign-out.
  */

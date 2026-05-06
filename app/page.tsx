@@ -54,12 +54,54 @@ function LandingPageInner() {
   const session = useNeonSession();
   const [sourceUrl, setSourceUrl] = useState("");
   const [showAuthDialog, setShowAuthDialog] = useState(false);
+  // Suprime auto-redirect pra /app logo após signOut. Sem essa guarda, se
+  // o cookie cross-origin demora pra invalidar (ou se o cache do Better
+  // Auth ainda tem a sessão antiga em alguma tab), o user clicava "Sair"
+  // e caía de volta no /app instantaneamente. Quando `?signed_out=1` está
+  // na URL ou flag em sessionStorage, ignoramos o redirect e limpamos a
+  // flag depois de 5s.
+  const [suppressRedirect, setSuppressRedirect] = useState(() => {
+    if (typeof window === "undefined") return false;
+    if (searchParams.get("signed_out") === "1") return true;
+    try {
+      return window.sessionStorage.getItem("rv_suppress_redirect") === "1";
+    } catch {
+      return false;
+    }
+  });
 
   // Se voltou pra "/" com ?login=required (vindo do app sem auth), abre o
   // dialog automaticamente e mostra mensagem amigável.
   useEffect(() => {
     if (searchParams.get("login") === "required") {
       setShowAuthDialog(true);
+    }
+    if (searchParams.get("signed_out") === "1") {
+      setSuppressRedirect(true);
+      try {
+        window.sessionStorage.setItem("rv_suppress_redirect", "1");
+      } catch {
+        /* ignore */
+      }
+      // Limpa o param da URL pra não ficar visível
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("signed_out");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      } catch {
+        /* ignore */
+      }
+      // Libera o redirect depois de 5s — tempo suficiente pra cookie/cache
+      // serem invalidados e novos signins funcionarem normal.
+      const timer = setTimeout(() => {
+        setSuppressRedirect(false);
+        try {
+          window.sessionStorage.removeItem("rv_suppress_redirect");
+        } catch {
+          /* ignore */
+        }
+      }, 5000);
+      return () => clearTimeout(timer);
     }
   }, [searchParams]);
 
@@ -159,12 +201,16 @@ function LandingPageInner() {
     }
   }, [searchParams]);
 
-  // Se user logar enquanto na landing, manda direto pro app
+  // Se user logar enquanto na landing, manda direto pro app.
+  // Quando `suppressRedirect` está ativo (recém saiu via signOutAndReset),
+  // bloqueamos esse redirect por ~5s pra dar tempo do cookie cross-origin
+  // invalidar e evitar loop de "Sair → cai de volta no /app".
   useEffect(() => {
+    if (suppressRedirect) return;
     if (!session.isPending && session.data?.user) {
       router.replace("/app");
     }
-  }, [session.isPending, session.data?.user, router]);
+  }, [session.isPending, session.data?.user, router, suppressRedirect]);
 
   async function handlePaste() {
     try {
@@ -203,13 +249,14 @@ function LandingPageInner() {
       /* sessionStorage bloqueado */
     }
 
-    if (session.data?.user) {
+    if (session.data?.user && !suppressRedirect) {
       // Logado: vai direto pro app
       router.push("/app");
       return;
     }
 
-    // Anônimo: abre login wall. Pós-login, useEffect acima manda pro /app.
+    // Anônimo (ou recém-deslogado com cache stale): abre login wall.
+    // Pós-login, useEffect acima manda pro /app.
     setShowAuthDialog(true);
   }
 
@@ -261,7 +308,10 @@ function LandingPageInner() {
           >
             Planos
           </Link>
-          {session.data?.user ? (
+          {/* Quando `suppressRedirect` está ativo (recém saiu), priorizamos
+              o botão "Entrar" mesmo se a sessão ainda aparecer cacheada,
+              pra UX coerente com o sign-out que acabou de acontecer. */}
+          {session.data?.user && !suppressRedirect ? (
             <Link
               href="/app"
               className="rv-btn rv-btn-rec"
