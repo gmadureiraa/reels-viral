@@ -32,9 +32,15 @@ import {
   Lightbulb,
   Film,
   ArrowRight,
+  Shield,
+  Plus,
+  Trash2,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNeonSession, getJwtToken } from "@/lib/auth-client";
+import { isAdminEmail } from "@/lib/admin-emails";
 import type { SourceAnalysis, Objetivo } from "@/lib/types";
 
 const PENDING_FORM_KEY = "rv_pending_brief";
@@ -174,7 +180,7 @@ function thumbProxy(url: string | null): string | null {
 
 export default function LibraryPage() {
   const router = useRouter();
-  useNeonSession();
+  const session = useNeonSession();
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [reels, setReels] = useState<LibraryReel[]>([]);
   const [ideas, setIdeas] = useState<LibraryIdea[]>([]);
@@ -186,6 +192,109 @@ export default function LibraryPage() {
   const [search, setSearch] = useState("");
   const [selectedReel, setSelectedReel] = useState<LibraryReel | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  // Admin mode — só Gabriel (`gf.madureiraa@gmail.com` / hotmail) vê o
+  // toggle. Server `requireAdmin` é a fonte de verdade — UI aqui é só UX
+  // pra esconder controles inalcançáveis.
+  const isAdmin = isAdminEmail(session.data?.user?.email);
+  const [adminMode, setAdminMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addUrl, setAddUrl] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [deletingBulk, setDeletingBulk] = useState(false);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleAddByUrl() {
+    if (!addUrl.trim() || adding) return;
+    setAdding(true);
+    try {
+      const jwt = await getJwtToken();
+      const res = await fetch("/api/library/admin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+        },
+        body: JSON.stringify({ url: addUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      toast.success("Reel adicionado à biblioteca.");
+      setAddUrl("");
+      setShowAddModal(false);
+      // Refresh client-side inserindo no topo (otimista) — full refetch no
+      // próximo filter change cobre estado canônico
+      if (data.reel) {
+        setReels((prev) => [
+          {
+            id: data.reel.id,
+            ig_url: data.reel.ig_url,
+            short_code: null,
+            author_handle: data.reel.author_handle,
+            categories: [],
+            caption: null,
+            thumb_url: data.reel.thumb_url,
+            likes_count: data.reel.likes_count,
+            views_count: null,
+            duration_seconds: null,
+            template_type: null,
+            hook_pattern: null,
+            featured: false,
+            sourceIdea: null,
+          },
+          ...prev,
+        ]);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao adicionar");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleDeleteSelected() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0 || deletingBulk) return;
+    if (
+      !window.confirm(
+        `Apagar ${ids.length} reel${ids.length > 1 ? "s" : ""} da biblioteca? Não dá pra desfazer.`,
+      )
+    ) {
+      return;
+    }
+    setDeletingBulk(true);
+    try {
+      const jwt = await getJwtToken();
+      const headers: Record<string, string> = jwt
+        ? { Authorization: `Bearer ${jwt}` }
+        : {};
+      // Sequencial pra respeitar rate-limit DB (volume baixo, OK)
+      let ok = 0;
+      for (const id of ids) {
+        const res = await fetch(`/api/library/admin/${id}`, {
+          method: "DELETE",
+          headers,
+        });
+        if (res.ok) ok++;
+      }
+      setReels((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+      setSelectedIds(new Set());
+      toast.success(`${ok}/${ids.length} reels apagados.`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro");
+    } finally {
+      setDeletingBulk(false);
+    }
+  }
 
   // Filtra reels client-side por search query
   const filteredReels = useMemo(() => {
@@ -511,6 +620,117 @@ export default function LibraryPage() {
           </div>
         )}
 
+        {/* Admin bar — só Gabriel (isAdmin checa email). Server `requireAdmin`
+            é a verdade; se non-admin ativar pelo dev tools, endpoints retornam 403. */}
+        {isAdmin && (
+          <div
+            style={{
+              border: "1.5px solid var(--color-rv-rec)",
+              background: adminMode ? "rgba(255, 61, 46, 0.08)" : "white",
+              padding: "10px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 16,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setAdminMode(!adminMode);
+                setSelectedIds(new Set());
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                background: adminMode ? "var(--color-rv-rec)" : "transparent",
+                color: adminMode ? "white" : "var(--color-rv-ink)",
+                border: "1.5px solid var(--color-rv-rec)",
+                padding: "8px 14px",
+                fontFamily: "var(--font-mono)",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                cursor: "pointer",
+              }}
+            >
+              <Shield size={13} />
+              {adminMode ? "Modo admin ativo" : "Modo admin"}
+            </button>
+            {adminMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(true)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: "var(--color-rv-ink)",
+                    color: "white",
+                    border: "1.5px solid var(--color-rv-ink)",
+                    padding: "8px 12px",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Plus size={13} />
+                  Adicionar URL
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedIds.size === 0 || deletingBulk}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background:
+                      selectedIds.size === 0
+                        ? "rgba(255,61,46,0.15)"
+                        : "var(--color-rv-rec)",
+                    color: selectedIds.size === 0 ? "var(--color-rv-muted)" : "white",
+                    border: "1.5px solid var(--color-rv-rec)",
+                    padding: "8px 12px",
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    cursor:
+                      selectedIds.size === 0 || deletingBulk
+                        ? "not-allowed"
+                        : "pointer",
+                  }}
+                >
+                  {deletingBulk ? (
+                    <Loader2 size={13} className="rv-spin" />
+                  ) : (
+                    <Trash2 size={13} />
+                  )}
+                  Apagar ({selectedIds.size})
+                </button>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "var(--color-rv-muted)",
+                    marginLeft: "auto",
+                  }}
+                >
+                  Clique no card pra selecionar.
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Search input */}
         {unlocked && (
           <div
@@ -645,7 +865,13 @@ export default function LibraryPage() {
                     key={`reel-${item.data.id}`}
                     reel={item.data}
                     unlocked={unlocked}
-                    onClick={() => setSelectedReel(item.data)}
+                    adminMode={adminMode}
+                    selected={selectedIds.has(item.data.id)}
+                    onClick={() =>
+                      adminMode
+                        ? toggleSelected(item.data.id)
+                        : setSelectedReel(item.data)
+                    }
                   />
                 ) : (
                   <IdeaCard
@@ -795,6 +1021,148 @@ export default function LibraryPage() {
           profileReady={Boolean(profile?.nicho && profile?.persona)}
         />
       )}
+
+      {/* Admin: modal pra adicionar reel via URL — Apify scrape no submit */}
+      {showAddModal && isAdmin && (
+        <div
+          onClick={() => !adding && setShowAddModal(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(10,9,8,0.6)",
+            backdropFilter: "blur(4px)",
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              background: "var(--color-rv-cream)",
+              border: "1.5px solid var(--color-rv-ink)",
+              boxShadow: "8px 8px 0 0 var(--color-rv-rec)",
+              padding: "28px 28px 24px",
+            }}
+          >
+            <div
+              className="rv-eyebrow"
+              style={{ marginBottom: 12, color: "var(--color-rv-rec)" }}
+            >
+              <Shield size={12} /> ADMIN · ADICIONAR REEL
+            </div>
+            <h2
+              className="rv-display"
+              style={{
+                fontSize: 26,
+                lineHeight: 1.1,
+                marginBottom: 8,
+              }}
+            >
+              Cole a URL do Reel.
+            </h2>
+            <p
+              style={{
+                fontSize: 13,
+                color: "var(--color-rv-muted)",
+                lineHeight: 1.5,
+                marginBottom: 18,
+              }}
+            >
+              Apify roda scrape no post (~30-60s) e popula a biblioteca com
+              caption, thumb, métricas e classificação automática de template.
+              Suporta Instagram (post / reel / reels).
+            </p>
+            <input
+              type="url"
+              value={addUrl}
+              onChange={(e) => setAddUrl(e.target.value)}
+              placeholder="https://instagram.com/reel/ABC123"
+              autoFocus
+              disabled={adding}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleAddByUrl();
+                if (e.key === "Escape" && !adding) setShowAddModal(false);
+              }}
+              style={{
+                width: "100%",
+                padding: "12px 14px",
+                fontSize: 14,
+                border: "1.5px solid var(--color-rv-ink)",
+                background: "white",
+                fontFamily: "var(--font-jakarta), sans-serif",
+                marginBottom: 14,
+                outline: "none",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                justifyContent: "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                disabled={adding}
+                style={{
+                  background: "transparent",
+                  border: "1.5px solid var(--color-rv-line)",
+                  padding: "10px 16px",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                  cursor: adding ? "not-allowed" : "pointer",
+                  color: "var(--color-rv-muted)",
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleAddByUrl()}
+                disabled={!addUrl.trim() || adding}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: "var(--color-rv-rec)",
+                  color: "white",
+                  border: "1.5px solid var(--color-rv-rec)",
+                  padding: "10px 18px",
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 11,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                  cursor:
+                    !addUrl.trim() || adding ? "not-allowed" : "pointer",
+                  opacity: !addUrl.trim() ? 0.5 : 1,
+                }}
+              >
+                {adding ? (
+                  <>
+                    <Loader2 size={13} className="rv-spin" />
+                    Scrape rodando…
+                  </>
+                ) : (
+                  <>
+                    <Plus size={13} />
+                    Adicionar
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -802,10 +1170,14 @@ export default function LibraryPage() {
 function ReelCard({
   reel,
   unlocked,
+  adminMode = false,
+  selected = false,
   onClick,
 }: {
   reel: LibraryReel;
   unlocked: boolean;
+  adminMode?: boolean;
+  selected?: boolean;
   onClick: () => void;
 }) {
   const fmt = (n: number | null): string => {
@@ -834,8 +1206,38 @@ function ReelCard({
           backgroundColor: "#2a1a14",
           position: "relative",
           overflow: "hidden",
+          // Em modo admin, destaca card selecionado com outline coral
+          // grosso. Sem deslocar layout (não troca padding).
+          outline: adminMode && selected ? "4px solid var(--color-rv-rec)" : "none",
+          outlineOffset: -4,
         }}
       >
+        {/* Checkbox admin — overlay topo-direita quando admin mode ativo */}
+        {adminMode && (
+          <div
+            style={{
+              position: "absolute",
+              top: 8,
+              right: 8,
+              zIndex: 3,
+              width: 28,
+              height: 28,
+              background: selected ? "var(--color-rv-rec)" : "rgba(10,9,8,0.7)",
+              border: "2px solid white",
+              borderRadius: 4,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              backdropFilter: "blur(4px)",
+            }}
+          >
+            {selected ? (
+              <CheckSquare size={16} color="white" />
+            ) : (
+              <Square size={16} color="white" />
+            )}
+          </div>
+        )}
         {reel.featured && (
           <div
             className="rv-mono"
