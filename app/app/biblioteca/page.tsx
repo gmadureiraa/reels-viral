@@ -816,15 +816,22 @@ function ReelCard({
   };
   // Thumb sempre que existe — é o preview visual, ofuscar tudo deixava a
   // biblioteca como uma grade de gradients indecifráveis pro free user.
+  // Gradient atrás como fallback: quando /api/img retorna placeholder
+  // transparente (TikTok signed URL expirou, IG bloqueou, etc), o gradient
+  // aparece em vez de quadrado branco quebrado. Layered: image em cima,
+  // gradient embaixo, background-color de segurança.
   const proxiedThumb = thumbProxy(reel.thumb_url);
   const cardContent = (
     <>
       <div
         style={{
           aspectRatio: "9 / 16",
-          background: proxiedThumb
-            ? `url(${proxiedThumb}) center/cover`
+          backgroundImage: proxiedThumb
+            ? `url(${proxiedThumb}), linear-gradient(135deg, #2a1a14, #4a2a1f, #1a1a1a)`
             : "linear-gradient(135deg, #2a1a14, #4a2a1f, #1a1a1a)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          backgroundColor: "#2a1a14",
           position: "relative",
           overflow: "hidden",
         }}
@@ -1160,14 +1167,19 @@ function ReelDetailModal({
           <X size={14} />
         </button>
 
-        {/* Thumb */}
+        {/* Thumb — mesma estratégia layered do card: image em cima, gradient
+            embaixo. Se /api/img devolver placeholder transparente (URL TikTok
+            expirada), o gradient mantém o fundo do modal coerente. */}
         <div
           style={{
             aspectRatio: "16 / 9",
             maxHeight: 280,
-            background: proxiedThumb
-              ? `url(${proxiedThumb}) center/cover`
+            backgroundImage: proxiedThumb
+              ? `url(${proxiedThumb}), linear-gradient(135deg, #2a1a14, #4a2a1f, #1a1a1a)`
               : "linear-gradient(135deg, #2a1a14, #4a2a1f, #1a1a1a)",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundColor: "#2a1a14",
             position: "relative",
             borderBottom: "1.5px solid var(--color-rv-ink)",
           }}
