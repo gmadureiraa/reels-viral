@@ -42,6 +42,13 @@ export async function getOptionalUserId(
   if (!jwksClient) return null;
 
   try {
+    // TODO(P1-1 segurança 2026-05-08): adicionar `{ issuer, audience }` no
+    // jwtVerify quando o Neon Auth expor issuer/aud claims públicos. Hoje
+    // (2026-05-08) o endpoint .well-known/openid-configuration retorna 404
+    // e o JWKS público não documenta esses valores. Sem checagem, qualquer
+    // JWT assinado pela mesma JWKS é aceito — risco baixo enquanto o
+    // Neon project é dedicado ao Reels Viral, mas vira P0 se compartilhar.
+    // Acompanhar: https://neon.tech/docs/guides/neon-auth
     const { payload } = await jwtVerify(token, jwksClient);
     return parsePayload(payload);
   } catch {

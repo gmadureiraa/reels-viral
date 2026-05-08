@@ -6,3 +6,6 @@ node_modules
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+
+# Security audits — local-only, contém detalhes de vulnerabilidades
+.security/
