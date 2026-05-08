@@ -79,6 +79,18 @@ export async function GET(req: Request) {
    * Helper genérico — busca leads na janela e envia stage. Marca
    * `${stageColumn}_sent_at` em sucesso.
    */
+  // P1-3 fix 2026-05-08: whitelist explícita pra usar em sql.unsafe.
+  // Sem whitelist, qualquer string passada como stageColumn vira SQL
+  // injection trivial (apesar dos callers internos hoje passarem só
+  // strings hardcoded). Defesa em profundidade — bloqueia regressões
+  // futuras se alguém aceitar stageColumn de input externo.
+  const ALLOWED_STAGE_COLUMNS = new Set([
+    "checkin_sent_at",
+    "case_study_sent_at",
+    "offer_sent_at",
+    "reengagement_sent_at",
+  ]);
+
   async function processStage(opts: {
     stage: keyof typeof counts;
     daysMin: number;
@@ -87,6 +99,12 @@ export async function GET(req: Request) {
     build: (lead: LeadRow) => { subject: string; html: string; text: string };
   }) {
     const { daysMin, daysMax, stageColumn } = opts;
+    if (!ALLOWED_STAGE_COLUMNS.has(stageColumn)) {
+      console.error(
+        `[cron] stageColumn inválido: ${stageColumn} — abortando stage`,
+      );
+      return;
+    }
     // Pega leads com welcome_sent_at na janela [daysMin, daysMax) dias
     // atrás, sem o stage atual enviado, com consent + sem conversão.
     const rows = (await sql.query(
