@@ -18,11 +18,16 @@
  * no parent quando o useNeonSession() detecta user logado pela primeira
  * vez na sessao do browser. Ver components/auth-dialog.tsx + hook em
  * useNeonSession() pra trigger de fato (TODO consumer).
+ *
+ * Segurança (P0 fix 2026-05-08): exige Bearer JWT do Neon Auth e
+ * confere `payload.email === body.email` (case-insensitive trim) pra
+ * impedir email bombing / envenenamento da audience Resend.
  */
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { upsertLeadInAudience, fireResendEvent } from "@/lib/resend";
+import { requireUserId } from "@/lib/server-auth";
 
 export const runtime = "nodejs";
 export const maxDuration = 10;
@@ -35,6 +40,10 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
+  // 0. Auth obrigatória — só user logado dispara hook do próprio signup.
+  const auth = await requireUserId(req);
+  if ("response" in auth) return auth.response;
+
   let parsed;
   try {
     const body = await req.json();
@@ -50,6 +59,16 @@ export async function POST(req: Request) {
   const email = parsed.email.toLowerCase().trim();
   const firstName = parsed.name?.trim() || null;
   const method = parsed.method ?? "email";
+
+  // Confere email do body x email do JWT — protege contra um user logado
+  // disparar hook com email arbitrário. Fail-closed se JWT não traz email.
+  const tokenEmail = (auth.user.email ?? "").toLowerCase().trim();
+  if (!tokenEmail || tokenEmail !== email) {
+    return NextResponse.json(
+      { error: "email do body não confere com a sessão." },
+      { status: 403 }
+    );
+  }
 
   // 1. Audience sync (best-effort)
   const tags = [

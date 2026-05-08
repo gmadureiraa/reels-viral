@@ -13,6 +13,8 @@
     "@neondatabase/auth": "0.3.0-beta",
     "@neondatabase/serverless": "^1.1.0",
     "@stripe/stripe-js": "^9.4.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.0",
     "jose": "^6.2.3",

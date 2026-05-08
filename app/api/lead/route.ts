@@ -18,6 +18,11 @@ import { neon } from "@neondatabase/serverless";
 import { Resend } from "resend";
 import { upsertLeadInAudience } from "@/lib/resend";
 import { welcomeEmail, FROM_ADDRESS } from "@/lib/email-templates";
+import {
+  checkRateLimitAsync,
+  getAnonFingerprint,
+  getClientKey,
+} from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 10;
@@ -36,6 +41,9 @@ const BodySchema = z.object({
   objetivo: z.enum(["leads", "produto", "seguidores", "engajamento"]).optional(),
   tema: z.string().max(280).optional(),
   consentMarketing: z.boolean(),
+  // Honeypot anti-bot: campo "_hp" não-renderizado em UI. Se vier preenchido,
+  // é bot. Aceita string vazia ou ausente em humanos.
+  _hp: z.string().max(200).optional(),
 });
 
 export async function POST(req: Request) {
@@ -46,6 +54,28 @@ export async function POST(req: Request) {
     );
   }
 
+  // Rate limit por IP+fingerprint pra impedir bots de encher leads/Resend.
+  // 5 reqs / 10 min por fingerprint (usa Upstash quando setado, senão fallback
+  // in-memory). Aplica em prod e dev (rota é pública e barata de abusar).
+  const fingerprint = getAnonFingerprint(req);
+  const rate = await checkRateLimitAsync({
+    key: `lead:${fingerprint}`,
+    limit: 5,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: "Muitas tentativas. Tente novamente em alguns minutos.",
+        retryAfterSec: rate.retryAfterSec,
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSec) },
+      },
+    );
+  }
+
   let parsed;
   try {
     const body = await req.json();
@@ -53,6 +83,15 @@ export async function POST(req: Request) {
   } catch (err) {
     const msg = err instanceof z.ZodError ? err.issues.map((i) => i.message).join(", ") : "Invalid body";
     return NextResponse.json({ error: msg }, { status: 400 });
+  }
+
+  // Honeypot: se o bot preencheu `_hp`, retorna 200 sem fazer nada (não
+  // ensinar o bot que existe filtro). Loga só pra observabilidade.
+  if (parsed._hp && parsed._hp.trim().length > 0) {
+    console.warn(
+      `[lead] honeypot tripped fp=${fingerprint} ip=${getClientKey(req)}`,
+    );
+    return NextResponse.json({ ok: true });
   }
 
   const sql = neon(process.env.DATABASE_URL);

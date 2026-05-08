@@ -1,16 +1,27 @@
 /**
- * Rate limiting in-memory pro MVP do Reels Viral.
+ * Rate limiting do Reels Viral.
+ *
+ * Compatibilidade:
+ *  - `checkRateLimit(opts)` — interface SÍNCRONA original (in-memory Map).
+ *    Mantida pra não quebrar callsites legados (`/api/adapt-reel`,
+ *    `/api/referrals/track`).
+ *  - `checkRateLimitAsync(opts)` — nova interface assíncrona que usa Upstash
+ *    Redis quando `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`
+ *    estiverem setados. Fallback pro Map in-memory caso contrário (com
+ *    `console.warn` na primeira chamada). Use essa em rotas novas.
+ *
+ * Distribuído x serverless: o Map in-memory NÃO é safe entre instâncias
+ * Vercel (cada cold start tem seu próprio Map). Pra defesa real contra abuse
+ * que rotaciona regiões/colds, usar a versão async com Upstash setado.
  *
  * Usuários logados: 10 adaptações/hora (chave = user:<userId>)
  * Anônimos:          2 adaptações/hora (chave = anon:<ip>:<deviceId>)
  *
  * A diferença de limite força bots a criar contas pra abusar — custo real.
- * Não é distributed-safe (cada instância serverless tem seu próprio map),
- * mas pra Hobby tier do Vercel é suficiente — queremos só evitar abuse
- * descarado que estoure custo Apify+Gemini.
- *
- * Migrar pra Upstash Redis (igual SV) quando ligar billing.
  */
+
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 
 interface Bucket {
   count: number;
@@ -36,6 +47,10 @@ export interface RateLimitOpts {
   windowMs?: number;
 }
 
+/**
+ * Versão SÍNCRONA in-memory (original). Mantida pra compat — usar
+ * `checkRateLimitAsync` em rotas novas.
+ */
 export function checkRateLimit(opts: RateLimitOpts): RateLimitResult {
   const { key, limit, windowMs = WINDOW_MS } = opts;
   const now = Date.now();
@@ -68,6 +83,80 @@ export function checkRateLimit(opts: RateLimitOpts): RateLimitResult {
     resetIn: existing.resetAt - now,
     retryAfterSec: 0,
   };
+}
+
+// ---- Upstash async path ----------------------------------------------------
+
+let upstashRedis: Redis | null = null;
+let upstashWarned = false;
+const limiterCache = new Map<string, Ratelimit>();
+
+function getUpstashRedis(): Redis | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) {
+    if (!upstashWarned) {
+      // Aviso uma vez por process — Upstash não setado, usando fallback.
+      console.warn(
+        "[rate-limit] UPSTASH_REDIS_REST_URL/TOKEN ausente — usando fallback in-memory (não distribuído)."
+      );
+      upstashWarned = true;
+    }
+    return null;
+  }
+  if (!upstashRedis) {
+    upstashRedis = new Redis({ url, token });
+  }
+  return upstashRedis;
+}
+
+function getUpstashLimiter(limit: number, windowMs: number): Ratelimit | null {
+  const redis = getUpstashRedis();
+  if (!redis) return null;
+  // Cache por (limit,windowMs) pra evitar recriar a cada call.
+  const cacheKey = `${limit}:${windowMs}`;
+  const cached = limiterCache.get(cacheKey);
+  if (cached) return cached;
+  const seconds = Math.max(1, Math.floor(windowMs / 1000));
+  const limiter = new Ratelimit({
+    redis,
+    limiter: Ratelimit.slidingWindow(limit, `${seconds} s`),
+    prefix: "rv-rl",
+    analytics: false,
+  });
+  limiterCache.set(cacheKey, limiter);
+  return limiter;
+}
+
+/**
+ * Versão assíncrona — tenta Upstash primeiro, fallback in-memory.
+ * Use em rotas novas/expostas onde abuse cross-instance importa.
+ */
+export async function checkRateLimitAsync(
+  opts: RateLimitOpts
+): Promise<RateLimitResult> {
+  const { key, limit, windowMs = WINDOW_MS } = opts;
+  const limiter = getUpstashLimiter(limit, windowMs);
+  if (!limiter) {
+    // Fallback síncrono in-memory.
+    return checkRateLimit(opts);
+  }
+  try {
+    const res = await limiter.limit(key);
+    const now = Date.now();
+    const resetIn = Math.max(0, res.reset - now);
+    return {
+      allowed: res.success,
+      remaining: Math.max(0, res.remaining),
+      resetIn,
+      retryAfterSec: Math.ceil(resetIn / 1000),
+    };
+  } catch (err) {
+    // Em caso de falha do Upstash (timeout, network), fail-open com fallback
+    // in-memory pra não derrubar o produto. Loga pra observabilidade.
+    console.warn("[rate-limit] Upstash falhou, fallback in-memory:", err);
+    return checkRateLimit(opts);
+  }
 }
 
 /**
