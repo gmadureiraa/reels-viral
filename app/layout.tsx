@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Instrument_Serif, Geist_Mono } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "sonner";
 import { Footer } from "@/components/footer";
 import { MetaPixel } from "@/components/MetaPixel";
 import { ReferralCapture } from "@/components/ReferralCapture";
 import "./globals.css";
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -101,6 +104,7 @@ export default function RootLayout({
           }}
         />
       </body>
+      {GA_ID ? <GoogleAnalytics gaId={GA_ID} /> : null}
     </html>
   );
 }
