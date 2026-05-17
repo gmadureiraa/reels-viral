@@ -28,6 +28,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { upsertLeadInAudience, fireResendEvent } from "@/lib/resend";
 import { requireUserId } from "@/lib/server-auth";
+import { captureServerEvent } from "@/lib/posthog-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 10;
@@ -92,6 +93,12 @@ export async function POST(req: Request) {
     source: "signup",
     plan: "free",
     method,
+  });
+
+  await captureServerEvent(auth.user.id, "user_signed_up", {
+    method,
+    email,
+    plan: "free",
   });
 
   return NextResponse.json({

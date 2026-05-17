@@ -22,6 +22,7 @@ import { downloadMarkdown } from "@/lib/export-markdown";
 import { openSvBridge } from "@/lib/sv-bridge";
 import { saveScript } from "@/lib/storage";
 import { Teleprompter } from "@/components/teleprompter";
+import { track } from "@/lib/analytics";
 
 const PAPEL_LABELS: Record<Scene["papel"], string> = {
   hook: "HOOK",
@@ -71,16 +72,29 @@ export function ResultView({
     setCopied(label);
     toast.success(`${label} copiado`);
     setTimeout(() => setCopied(null), 2000);
+    track("script_exported", {
+      format: "clipboard",
+      section: label,
+      scenes_count: data.script.scenes.length,
+    });
   }
 
   function handleDownload() {
     downloadMarkdown(data);
     toast.success("Markdown baixado");
+    track("script_exported", {
+      format: "markdown",
+      scenes_count: data.script.scenes.length,
+    });
   }
 
   function handleBridgeSv() {
     openSvBridge(data);
     toast.success("Abrindo Sequência Viral...");
+    track("script_exported", {
+      format: "bridge_sv",
+      scenes_count: data.script.scenes.length,
+    });
   }
 
   return (

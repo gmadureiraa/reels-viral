@@ -21,6 +21,7 @@ import { stripe, STRIPE_APP_TAG, type PlanId, PLANS_RV } from "@/lib/stripe";
 import { neon } from "@neondatabase/serverless";
 import { fireResendEvent } from "@/lib/resend";
 import { applyReferralReward } from "@/lib/referrals";
+import { captureServerEvent } from "@/lib/posthog-server";
 
 /**
  * Stripe API ≥ 2025-03-31.basil moved `current_period_start/end` para
@@ -277,6 +278,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     currency: session.currency ?? null,
     coupon,
   });
+
+  await captureServerEvent(userId, "purchase_completed", {
+    plan: planId,
+    amount: amount ?? 0,
+    currency: session.currency ?? "brl",
+    coupon: coupon ?? null,
+    stripe_subscription_id: subscriptionId,
+  });
 }
 
 async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
@@ -334,10 +343,18 @@ async function handleSubscriptionUpdated(sub: Stripe.Subscription) {
       previous_plan: prevPlan,
       reason: "downgrade",
     });
+    await captureServerEvent(userId, "subscription_canceled", {
+      previous_plan: prevPlan,
+      reason: "downgrade",
+    });
   } else if (prevPlan && prevPlan !== planId && planId !== "free") {
     await fireResendEvent("reels.upgraded", {
       email,
       user_id: userId,
+      plan: planId,
+      previous_plan: prevPlan,
+    });
+    await captureServerEvent(userId, "subscription_updated", {
       plan: planId,
       previous_plan: prevPlan,
     });
@@ -370,6 +387,11 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
     user_id: userId,
     reason: "subscription_deleted",
   });
+  if (userId) {
+    await captureServerEvent(userId, "subscription_canceled", {
+      reason: "subscription_deleted",
+    });
+  }
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
@@ -412,6 +434,14 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
     currency: invoice.currency ?? null,
     attempt_count: attemptCount,
   });
+  if (userId) {
+    await captureServerEvent(userId, "payment_failed", {
+      plan: planId,
+      amount: amount ?? 0,
+      currency: invoice.currency ?? "brl",
+      attempt_count: attemptCount ?? 0,
+    });
+  }
   console.log(
     `[webhook] payment_failed sub=${subscriptionId} user=${userId} attempt=${attemptCount}`,
   );

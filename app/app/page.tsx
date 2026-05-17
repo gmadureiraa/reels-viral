@@ -31,6 +31,7 @@ import { AuthDialog } from "@/components/auth-dialog";
 import { QuotaBlockedModal } from "@/components/quota-blocked-modal";
 import { useNeonSession, getJwtToken } from "@/lib/auth-client";
 import { trackCompleteRegistration } from "@/lib/meta-pixel";
+import { track } from "@/lib/analytics";
 
 const OBJETIVOS: Array<{
   id: AdaptBrief["objetivo"];
@@ -223,6 +224,7 @@ function HomeInner() {
       if (text && isValidInstagramUrl(text)) {
         setSourceUrl(text);
         toast.success("Link colado");
+        track("reel_pasted", { source: "clipboard_button" });
       } else {
         toast.error("Clipboard não tem URL de Reel válida");
       }
@@ -280,6 +282,12 @@ function HomeInner() {
           resetsAt: data.quota.resetsAt,
         });
         setStep("form");
+        track("quota_blocked", {
+          used: data.quota.used,
+          limit: data.quota.limit,
+          plan: data.quota.plan ?? "free",
+          objetivo: brief.objetivo,
+        });
         return;
       }
       if (!res.ok) {
@@ -287,6 +295,11 @@ function HomeInner() {
       }
       setResult(data as AdaptResponse);
       setStep("result");
+      track("reel_analyzed", {
+        objetivo: brief.objetivo,
+        has_persona: Boolean(brief.persona?.trim()),
+        has_nicho: Boolean(brief.nicho?.trim()),
+      });
       // CompleteRegistration: dispara só na primeira adaptação bem-sucedida.
       // Flag local persistente — sobrevive a logout, mas é por device.
       // Aceitável: queremos sinal de "user ativado", não unique por user.
