@@ -62,6 +62,15 @@ export async function fetchInstagramPost(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // 403 platform-feature-disabled / hard limit = conta Apify estourou a
+    // cota mensal. Não é culpa do user nem da URL — mensagem clara e
+    // retryable=true (502) pra não parecer "URL inválida" (400).
+    if (res.status === 403 && /hard limit|feature-disabled|usage/i.test(text)) {
+      throw new ApifyError(
+        "Estamos com a cota de scraping no limite por agora. Tenta de novo em alguns minutos — já estamos resolvendo.",
+        true
+      );
+    }
     throw new ApifyError(
       `Apify ${res.status}: ${text.slice(0, 160)}`,
       res.status >= 500
