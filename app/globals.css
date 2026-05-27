@@ -1,41 +1,77 @@
 @import "tailwindcss";
 
 /* ═══════════════════════════════════════════════════════════════════
-   REELS VIRAL — Design System
+   REELS VIRAL — Design System (marca Kaleidos, light + dark)
    ───────────────────────────────────────────────────────────────────
-   Linguagem visual: editorial cinemático + bias vertical 9:16.
-   Coral REC (#FF3D2E) = botão de gravação / ação principal.
-   Cream paper (#F5F1E8) = base, evoca celuloide / fita.
-   Ink quase-preto (#0A0908) = texto, contornos brutalistas.
-   Mono Geist Mono pra timestamps [00:12], sans Plus Jakarta pro
-   corpo, serif Instrument italic pros displays editorial.
+   Estética: editorial cinemático + bias vertical 9:16, agora vestido
+   com a paleta oficial da marca Kaleidos:
+   - LIGHT: branco Kaleidos #FAFAFA + cards brancos + accent ROSA #D262B2.
+   - DARK : preto puro #000 + cards elevados + accent VERDE #7CF067.
+   O token --color-rv-rec (antes coral REC) agora carrega o accent da marca
+   (rosa no light, verde no dark) — os nomes foram preservados, então todos
+   os componentes (.rv-btn-rec, .rv-rec-dot, scrubber etc.) herdam a paleta
+   nova automaticamente via var().
 
-   Coerência com combo viral:
-   - Sequência Viral: cream + lime
-   - Viral Hunter:    cream + lime (twin)
-   - Reels Viral:     cream + CORAL (irmão diferente)
+   Fontes da marca Kaleidos (via next/font, ver app/layout.tsx):
+   - Inter    → corpo/UI (sans)
+   - Atelier  → títulos/display
+   - Gridlite → accent/eyebrows/labels pequenos
    ═══════════════════════════════════════════════════════════════════ */
 
 @theme {
-  --color-rv-paper: #F5F1E8;
-  --color-rv-cream: #FBF7EE;
-  --color-rv-ink: #0A0908;
-  --color-rv-coal: #1A1816;
-  --color-rv-rec: #FF3D2E;
-  --color-rv-rec-hot: #FF5947;
-  --color-rv-muted: #6B6660;
-  --color-rv-line: #DDD7CA;
-  --color-rv-soft: #EAE3D2;
+  /* LIGHT — branco Kaleidos (#FAFAFA) + cards brancos + rosa Kaleidos #D262B2.
+     Brandbook: Rosa #D262B2, Verde #7CF067, Preto #000, Branco #FAFAFA. */
+  --color-rv-paper: #FAFAFA;   /* Branco Kaleidos (page bg) */
+  --color-rv-cream: #FFFFFF;   /* surface / cards / fg sobre accent */
+  --color-rv-ink: #141414;     /* texto principal (quase preto) */
+  --color-rv-coal: #141414;
+  --color-rv-rec: #D262B2;     /* ACCENT primário — Rosa Kaleidos */
+  --color-rv-rec-hot: #C24FA0; /* hover do accent */
+  --color-rv-muted: #5C5858;   /* texto muted (AA sobre paper) */
+  --color-rv-line: #141414;    /* bordas brutalistas (ink) */
+  --color-rv-soft: #F1ECF0;    /* hover surface (pink-tint) */
   --color-rv-amber: #F0B33C;
 
-  --font-sans: "Plus Jakarta Sans", -apple-system, system-ui, sans-serif;
-  --font-display: "Instrument Serif", "Playfair Display", Georgia, serif;
-  --font-mono: "Geist Mono", "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+  --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-display: var(--font-atelier), "Playfair Display", Georgia, serif;
+  --font-accent: var(--font-gridlite), var(--font-inter), sans-serif;
+  --font-mono: var(--font-gridlite), "Geist Mono", "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+
+  /* Aliases legados — vários componentes ainda referenciam os nomes antigos
+     (--font-jakarta / --font-instrument / --font-geist-mono) inline. Mapeamos
+     pros novos fonts da marca pra que herdem automaticamente sem precisar
+     editar cada call site. */
+  --font-jakarta: var(--font-inter);
+  --font-instrument: var(--font-atelier);
+  --font-geist-mono: var(--font-gridlite);
 }
 
 @layer base {
   :root {
     color-scheme: light;
+  }
+
+  /* ───────────────────────────────────────────────────────────
+     Dark mode — ativado via [data-theme="dark"] no <html>.
+     Setado por: 1) app/theme-script.tsx (inline, anti-FOUC)
+                 2) components/ThemeToggle.tsx (click).
+     Persistência: localStorage 'rv-theme'. Fallback: system preference.
+     Preto puro #000 + cards elevados + accent VERDE Kaleidos.
+     --color-rv-cream vira quase-preto: serve de surface escura E de
+     foreground (texto preto) sobre o botão accent verde.
+     ─────────────────────────────────────────────────────────── */
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --color-rv-paper: #000000;    /* Preto Kaleidos */
+    --color-rv-cream: #18181A;    /* cards / surface elevada sobre o preto */
+    --color-rv-ink: #FAFAFA;      /* Branco Kaleidos (texto / bordas) */
+    --color-rv-coal: #FAFAFA;
+    --color-rv-rec: #7CF067;      /* ACCENT primário — Verde Kaleidos */
+    --color-rv-rec-hot: #93F584;
+    --color-rv-muted: #B0AFAC;    /* texto secundário (+contraste sobre preto) */
+    --color-rv-line: #FAFAFA;     /* bordas brutalistas (branco sobre preto) */
+    --color-rv-soft: #262628;     /* hover surface */
+    --color-rv-amber: #E6B84D;
   }
 
   html, body {
@@ -215,4 +251,39 @@
 
 .rv-spin {
   animation: rv-spin 0.8s linear infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   View Transition — troca de tema com revelação circular a partir
+   do botão. Acionada pelo ThemeToggle via startViewTransition +
+   classe .vt-theme-toggling.
+   ───────────────────────────────────────────────────────────── */
+@supports (view-transition-name: a) {
+  html.vt-theme-toggling::view-transition-old(root),
+  html.vt-theme-toggling::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+  html.vt-theme-toggling::view-transition-old(root) {
+    z-index: 1;
+  }
+  html.vt-theme-toggling::view-transition-new(root) {
+    z-index: 2;
+    animation: theme-circle-reveal 560ms cubic-bezier(0.65, 0, 0.35, 1);
+  }
+}
+
+@keyframes theme-circle-reveal {
+  from {
+    clip-path: circle(0% at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+  to {
+    clip-path: circle(140% at var(--vt-x, 50%) var(--vt-y, 50%));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.vt-theme-toggling::view-transition-new(root) {
+    animation: none;
+  }
 }

@@ -33,6 +33,7 @@ import {
 } from "@/lib/auth-client";
 import { useLoginMigration } from "@/lib/storage";
 import { isAdminEmail } from "@/lib/admin-emails";
+import ThemeToggle from "@/components/ThemeToggle";
 
 interface NavItem {
   href: string;
@@ -128,6 +129,21 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   const closeDrawer = () => setMobileOpen(false);
 
+  // Esc fecha o drawer mobile + trava o scroll do body enquanto aberto.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMobileOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [mobileOpen]);
+
   if (session.isPending) {
     return (
       <div
@@ -210,6 +226,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       )}
       <aside
         className="rv-sidebar-mobile"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu de navegação"
+        aria-hidden={!mobileOpen}
         style={{
           position: "fixed",
           top: 0,
@@ -221,6 +241,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           transform: mobileOpen ? "translateX(0)" : "translateX(-100%)",
           transition: "transform 0.2s ease",
           zIndex: 70,
+          visibility: mobileOpen ? "visible" : "hidden",
         }}
       >
         <SidebarContent
@@ -256,11 +277,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             type="button"
             onClick={() => setMobileOpen(true)}
             aria-label="Abrir menu"
+            aria-expanded={mobileOpen}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "var(--color-rv-soft)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+            }}
             style={{
               border: "1.5px solid var(--color-rv-ink)",
               padding: 8,
               cursor: "pointer",
               background: "transparent",
+              transition: "background 0.12s",
             }}
           >
             <Menu size={16} />
@@ -268,7 +297,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="rv-eyebrow">
             <span className="rv-rec-dot" /> REELS VIRAL
           </div>
-          <div style={{ width: 32 }} />
+          <ThemeToggle />
         </header>
 
         <div>{children}</div>
@@ -327,13 +356,28 @@ function SidebarContent({
         key={href}
         href={href}
         onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        onMouseEnter={(e) => {
+          if (active) return;
+          e.currentTarget.style.background =
+            "color-mix(in srgb, var(--color-rv-paper) 10%, transparent)";
+          e.currentTarget.style.color = "var(--color-rv-paper)";
+        }}
+        onMouseLeave={(e) => {
+          if (active) return;
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.color =
+            "color-mix(in srgb, var(--color-rv-paper) 78%, transparent)";
+        }}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 10,
           padding: "9px 10px",
           background: active ? "var(--color-rv-rec)" : "transparent",
-          color: active ? "white" : "rgba(245,241,232,0.72)",
+          color: active
+            ? "var(--color-rv-cream)"
+            : "color-mix(in srgb, var(--color-rv-paper) 78%, transparent)",
           fontFamily: "var(--font-mono)",
           fontSize: 10.5,
           letterSpacing: "0.12em",
@@ -356,7 +400,7 @@ function SidebarContent({
               background: active
                 ? "rgba(0,0,0,0.18)"
                 : "var(--color-rv-rec)",
-              color: "white",
+              color: "var(--color-rv-cream)",
             }}
           >
             {badge}
@@ -393,7 +437,7 @@ function SidebarContent({
           justifyContent: "space-between",
           paddingBottom: 18,
           marginBottom: 14,
-          borderBottom: "1px solid rgba(245,241,232,0.12)",
+          borderBottom: "1px solid color-mix(in srgb, var(--color-rv-paper) 16%, transparent)",
         }}
       >
         <Link
@@ -423,6 +467,7 @@ function SidebarContent({
             Reels <em>Viral</em>
           </span>
         </Link>
+        {!showCloseButton && <ThemeToggle />}
         {showCloseButton && (
           <button
             type="button"
@@ -432,7 +477,7 @@ function SidebarContent({
               background: "transparent",
               border: "none",
               cursor: "pointer",
-              color: "rgba(245,241,232,0.7)",
+              color: "color-mix(in srgb, var(--color-rv-paper) 75%, transparent)",
             }}
           >
             <X size={18} />
@@ -452,7 +497,7 @@ function SidebarContent({
           padding: "11px 14px",
           marginBottom: 16,
           background: "var(--color-rv-rec)",
-          color: "white",
+          color: "var(--color-rv-cream)",
           border: "1.5px solid var(--color-rv-paper)",
           fontFamily: "var(--font-mono)",
           fontSize: 10,
@@ -474,7 +519,7 @@ function SidebarContent({
           fontSize: 9,
           letterSpacing: "0.22em",
           textTransform: "uppercase",
-          color: "rgba(245,241,232,0.4)",
+          color: "color-mix(in srgb, var(--color-rv-paper) 62%, transparent)",
           fontWeight: 700,
         }}
       >
@@ -498,9 +543,9 @@ function SidebarContent({
           fontSize: 9,
           letterSpacing: "0.22em",
           textTransform: "uppercase",
-          color: "rgba(245,241,232,0.4)",
+          color: "color-mix(in srgb, var(--color-rv-paper) 62%, transparent)",
           fontWeight: 700,
-          borderTop: "1px solid rgba(245,241,232,0.12)",
+          borderTop: "1px solid color-mix(in srgb, var(--color-rv-paper) 16%, transparent)",
           marginTop: 12,
           paddingTop: 14,
         }}
@@ -515,7 +560,7 @@ function SidebarContent({
       <div
         style={{
           padding: "12px 12px",
-          border: "1px solid rgba(245,241,232,0.18)",
+          border: "1px solid color-mix(in srgb, var(--color-rv-paper) 22%, transparent)",
           marginBottom: 8,
         }}
       >
@@ -525,7 +570,7 @@ function SidebarContent({
             fontSize: 8.5,
             letterSpacing: "0.22em",
             textTransform: "uppercase",
-            color: "rgba(245,241,232,0.4)",
+            color: "color-mix(in srgb, var(--color-rv-paper) 62%, transparent)",
             fontWeight: 700,
             marginBottom: 4,
           }}
@@ -548,7 +593,7 @@ function SidebarContent({
         <div
           style={{
             fontSize: 10,
-            color: "rgba(245,241,232,0.5)",
+            color: "color-mix(in srgb, var(--color-rv-paper) 68%, transparent)",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -568,8 +613,8 @@ function SidebarContent({
           gap: 8,
           padding: "9px 12px",
           background: "transparent",
-          color: "rgba(245,241,232,0.5)",
-          border: "1px solid rgba(245,241,232,0.14)",
+          color: "color-mix(in srgb, var(--color-rv-paper) 70%, transparent)",
+          border: "1px solid color-mix(in srgb, var(--color-rv-paper) 18%, transparent)",
           fontFamily: "var(--font-mono)",
           fontSize: 10,
           letterSpacing: "0.16em",
@@ -582,7 +627,7 @@ function SidebarContent({
           e.currentTarget.style.color = "var(--color-rv-paper)";
         }}
         onMouseLeave={(e) => {
-          e.currentTarget.style.color = "rgba(245,241,232,0.5)";
+          e.currentTarget.style.color = "color-mix(in srgb, var(--color-rv-paper) 70%, transparent)";
         }}
       >
         <LogOut size={11} /> Sair

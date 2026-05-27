@@ -37,8 +37,8 @@ const PAPEL_COLORS: Record<Scene["papel"], string> = {
   hook: "var(--color-rv-rec)",
   promessa: "var(--color-rv-amber)",
   demo: "var(--color-rv-ink)",
-  prova: "#6B6660",
-  transicao: "#A8A29A",
+  prova: "var(--color-rv-muted)",
+  transicao: "var(--color-rv-muted)",
   cta: "var(--color-rv-rec)",
 };
 
@@ -276,7 +276,7 @@ export function ResultView({
                   gap: 10,
                   fontSize: 13,
                   lineHeight: 1.5,
-                  color: "rgba(245,241,232,0.85)",
+                  color: "color-mix(in srgb, var(--color-rv-cream) 88%, transparent)",
                 }}
               >
                 <span
@@ -503,7 +503,7 @@ export function ResultView({
                   padding: "8px 12px",
                   fontSize: 9,
                   background: "var(--color-rv-rec)",
-                  color: "white",
+                  color: "var(--color-rv-cream)",
                   boxShadow: "2px 2px 0 0 var(--color-rv-ink)",
                 }}
                 aria-label="Abrir teleprompter"
@@ -523,7 +523,7 @@ export function ResultView({
           </div>
           <pre
             style={{
-              background: "white",
+              background: "var(--color-rv-cream)",
               border: "1.5px solid var(--color-rv-ink)",
               padding: "20px 22px",
               fontFamily: "var(--font-jakarta), sans-serif",

@@ -1,31 +1,38 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans, Instrument_Serif, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "sonner";
 import { Footer } from "@/components/footer";
 import { MetaPixel } from "@/components/MetaPixel";
 import { ReferralCapture } from "@/components/ReferralCapture";
+import ThemeScript from "./theme-script";
 import "./globals.css";
 
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
-const sans = Plus_Jakarta_Sans({
+// Tipografia da marca Kaleidos:
+//   Inter    → corpo/UI (sans)
+//   Atelier  → títulos/display
+//   Gridlite → accent/eyebrows/labels pequenos
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-jakarta",
+  variable: "--font-inter",
   display: "swap",
 });
 
-const display = Instrument_Serif({
-  subsets: ["latin"],
+const atelier = localFont({
+  src: "../public/fonts/Atelier.ttf",
+  variable: "--font-atelier",
+  display: "swap",
   weight: "400",
-  variable: "--font-instrument",
-  display: "swap",
 });
 
-const mono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
+const gridlite = localFont({
+  src: "../public/fonts/Gridlite.otf",
+  variable: "--font-gridlite",
   display: "swap",
+  weight: "400",
 });
 
 // metadataBase precisa estar definido pro Next gerar URLs absolutas
@@ -64,7 +71,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#F5F1E8",
+  themeColor: "#FAFAFA",
   width: "device-width",
   initialScale: 1,
 };
@@ -77,11 +84,15 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
-      className={`${sans.variable} ${display.variable} ${mono.variable}`}
+      className={`${inter.variable} ${atelier.variable} ${gridlite.variable}`}
     >
+      <head>
+        {/* Anti-FOUC: seta data-theme="dark" antes do paint. */}
+        <ThemeScript />
+      </head>
       <body
         style={{
-          fontFamily: "var(--font-jakarta), system-ui, sans-serif",
+          fontFamily: "var(--font-inter), system-ui, sans-serif",
           minHeight: "100dvh",
         }}
       >

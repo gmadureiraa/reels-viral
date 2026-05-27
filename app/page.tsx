@@ -21,6 +21,7 @@ import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import ThemeToggle from "@/components/ThemeToggle";
 import {
   ArrowRight,
   Clipboard,
@@ -301,6 +302,7 @@ function LandingPageInner() {
           </span>
         </Link>
         <nav style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <ThemeToggle />
           <Link
             href="/app/precos"
             className="rv-btn rv-btn-ghost"
@@ -418,6 +420,13 @@ function LandingPageInner() {
             <button
               type="button"
               onClick={handlePaste}
+              aria-label="Colar link do clipboard"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--color-rv-soft)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--color-rv-paper)";
+              }}
               style={{
                 padding: "0 16px",
                 background: "var(--color-rv-paper)",
@@ -433,16 +442,23 @@ function LandingPageInner() {
                 alignItems: "center",
                 gap: 6,
                 color: "var(--color-rv-ink)",
+                transition: "background 0.12s",
               }}
             >
               <Clipboard size={13} /> Colar
             </button>
             <button
               type="submit"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = "var(--color-rv-rec-hot)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = "var(--color-rv-rec)";
+              }}
               style={{
                 padding: "16px 24px",
                 background: "var(--color-rv-rec)",
-                color: "white",
+                color: "var(--color-rv-cream)",
                 border: "none",
                 borderLeft: "1.5px solid var(--color-rv-ink)",
                 cursor: "pointer",
@@ -455,6 +471,7 @@ function LandingPageInner() {
                 alignItems: "center",
                 gap: 8,
                 whiteSpace: "nowrap",
+                transition: "background 0.12s",
               }}
             >
               <Sparkles size={13} /> Gerar reel viral
@@ -562,7 +579,7 @@ function LandingPageInner() {
       >
         <div
           className="rv-eyebrow"
-          style={{ justifyContent: "center", color: "rgba(245,241,232,0.6)" }}
+          style={{ justifyContent: "center", color: "color-mix(in srgb, var(--color-rv-paper) 72%, transparent)" }}
         >
           <span className="rv-rec-dot" /> COMECE AGORA
         </div>
@@ -597,7 +614,7 @@ function LandingPageInner() {
         <p
           style={{
             fontSize: 12,
-            color: "rgba(245,241,232,0.55)",
+            color: "color-mix(in srgb, var(--color-rv-paper) 72%, transparent)",
             marginTop: 18,
             display: "inline-flex",
             alignItems: "center",

@@ -6,6 +6,7 @@
  * Client detecta o code e abre esse modal em vez de mostrar toast genérico.
  */
 
+import { useEffect } from "react";
 import { X, Sparkles, Lock } from "lucide-react";
 import Link from "next/link";
 
@@ -27,6 +28,15 @@ export function QuotaBlockedModal({
     month: "long",
   });
 
+  // Esc fecha o modal (paywall pattern).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}
@@ -44,6 +54,9 @@ export function QuotaBlockedModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Limite mensal atingido"
         style={{
           width: "100%",
           maxWidth: 480,
@@ -77,7 +90,7 @@ export function QuotaBlockedModal({
             height: 52,
             borderRadius: 0,
             background: "var(--color-rv-rec)",
-            color: "white",
+            color: "var(--color-rv-cream)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",

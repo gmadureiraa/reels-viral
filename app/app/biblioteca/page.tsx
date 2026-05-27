@@ -555,8 +555,8 @@ export default function LibraryPage() {
                   fontWeight: 800,
                   letterSpacing: "0.14em",
                   textTransform: "uppercase",
-                  background: active ? "var(--color-rv-ink)" : "white",
-                  color: active ? "white" : "var(--color-rv-ink)",
+                  background: active ? "var(--color-rv-ink)" : "var(--color-rv-cream)",
+                  color: active ? "var(--color-rv-cream)" : "var(--color-rv-ink)",
                   border: "1.5px solid var(--color-rv-ink)",
                   cursor: "pointer",
                   boxShadow: active ? "3px 3px 0 0 var(--color-rv-rec)" : "none",
@@ -573,7 +573,7 @@ export default function LibraryPage() {
                     background: active
                       ? "rgba(255,255,255,0.18)"
                       : "var(--color-rv-soft)",
-                    color: active ? "white" : "var(--color-rv-muted)",
+                    color: active ? "var(--color-rv-cream)" : "var(--color-rv-muted)",
                     letterSpacing: "0.08em",
                   }}
                 >
@@ -626,7 +626,7 @@ export default function LibraryPage() {
           <div
             style={{
               border: "1.5px solid var(--color-rv-rec)",
-              background: adminMode ? "rgba(255, 61, 46, 0.08)" : "white",
+              background: adminMode ? "rgba(255, 61, 46, 0.08)" : "var(--color-rv-cream)",
               padding: "10px 14px",
               display: "flex",
               alignItems: "center",
@@ -646,7 +646,7 @@ export default function LibraryPage() {
                 alignItems: "center",
                 gap: 8,
                 background: adminMode ? "var(--color-rv-rec)" : "transparent",
-                color: adminMode ? "white" : "var(--color-rv-ink)",
+                color: adminMode ? "var(--color-rv-cream)" : "var(--color-rv-ink)",
                 border: "1.5px solid var(--color-rv-rec)",
                 padding: "8px 14px",
                 fontFamily: "var(--font-mono)",
@@ -670,7 +670,7 @@ export default function LibraryPage() {
                     alignItems: "center",
                     gap: 6,
                     background: "var(--color-rv-ink)",
-                    color: "white",
+                    color: "var(--color-rv-cream)",
                     border: "1.5px solid var(--color-rv-ink)",
                     padding: "8px 12px",
                     fontFamily: "var(--font-mono)",
@@ -696,7 +696,7 @@ export default function LibraryPage() {
                       selectedIds.size === 0
                         ? "rgba(255,61,46,0.15)"
                         : "var(--color-rv-rec)",
-                    color: selectedIds.size === 0 ? "var(--color-rv-muted)" : "white",
+                    color: selectedIds.size === 0 ? "var(--color-rv-muted)" : "var(--color-rv-cream)",
                     border: "1.5px solid var(--color-rv-rec)",
                     padding: "8px 12px",
                     fontFamily: "var(--font-mono)",
@@ -740,7 +740,7 @@ export default function LibraryPage() {
               gap: 0,
               marginBottom: 16,
               border: "1.5px solid var(--color-rv-ink)",
-              background: "white",
+              background: "var(--color-rv-cream)",
               maxWidth: 460,
             }}
           >
@@ -814,8 +814,8 @@ export default function LibraryPage() {
                   letterSpacing: "0.13em",
                   textTransform: "uppercase",
                   padding: "8px 12px",
-                  background: active ? "var(--color-rv-ink)" : "white",
-                  color: active ? "white" : "var(--color-rv-ink)",
+                  background: active ? "var(--color-rv-ink)" : "var(--color-rv-cream)",
+                  color: active ? "var(--color-rv-cream)" : "var(--color-rv-ink)",
                   border: "1.5px solid var(--color-rv-ink)",
                   cursor: "pointer",
                   whiteSpace: "nowrap",
@@ -834,19 +834,73 @@ export default function LibraryPage() {
         {/* Loading */}
         {loading && (
           <div
+            aria-busy="true"
+            aria-label="Carregando biblioteca"
             style={{
-              display: "flex",
-              justifyContent: "center",
-              padding: 60,
-              color: "var(--color-rv-muted)",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+              gap: 8,
             }}
           >
-            <Loader2 size={24} className="rv-spin" />
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="rv-shimmer"
+                aria-hidden="true"
+                style={{
+                  aspectRatio: "9 / 16",
+                  border: "1.5px solid var(--color-rv-line)",
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty state — biblioteca desbloqueada porém sem resultados
+            (filtro/busca sem match ou catálogo ainda vazio). */}
+        {!loading && unlocked && feed.length === 0 && (
+          <div
+            className="flex flex-col items-center justify-center"
+            style={{
+              padding: "72px 40px",
+              background: "var(--color-rv-cream)",
+              border: "1.5px dashed var(--color-rv-ink)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                background: "var(--color-rv-rec)",
+                color: "var(--color-rv-cream)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 18,
+              }}
+            >
+              <Lightbulb size={22} />
+            </div>
+            <h3 className="rv-display" style={{ fontSize: 26, marginBottom: 8 }}>
+              Nada por aqui ainda.
+            </h3>
+            <p
+              style={{
+                fontSize: 14,
+                color: "var(--color-rv-muted)",
+                maxWidth: 380,
+                lineHeight: 1.55,
+              }}
+            >
+              Nenhum item bateu com esse filtro ou busca. Tenta limpar a busca
+              ou trocar o tipo de biblioteca lá em cima.
+            </p>
           </div>
         )}
 
         {/* Feed unificado: reels + ideias */}
-        {!loading && (
+        {!loading && !(unlocked && feed.length === 0) && (
           <div style={{ position: "relative" }}>
             <div
               style={{
@@ -959,7 +1013,7 @@ export default function LibraryPage() {
                       width: 52,
                       height: 52,
                       background: "var(--color-rv-rec)",
-                      color: "white",
+                      color: "var(--color-rv-cream)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -1093,7 +1147,7 @@ export default function LibraryPage() {
                 padding: "12px 14px",
                 fontSize: 14,
                 border: "1.5px solid var(--color-rv-ink)",
-                background: "white",
+                background: "var(--color-rv-cream)",
                 fontFamily: "var(--font-jakarta), sans-serif",
                 marginBottom: 14,
                 outline: "none",
@@ -1134,7 +1188,7 @@ export default function LibraryPage() {
                   alignItems: "center",
                   gap: 8,
                   background: "var(--color-rv-rec)",
-                  color: "white",
+                  color: "var(--color-rv-cream)",
                   border: "1.5px solid var(--color-rv-rec)",
                   padding: "10px 18px",
                   fontFamily: "var(--font-mono)",
@@ -1246,7 +1300,7 @@ function ReelCard({
               top: 8,
               left: 8,
               background: "var(--color-rv-rec)",
-              color: "white",
+              color: "var(--color-rv-cream)",
               fontSize: 8,
               fontWeight: 800,
               letterSpacing: "0.14em",
@@ -1286,7 +1340,7 @@ function ReelCard({
               bottom: 38,
               left: 8,
               background: "var(--color-rv-rec)",
-              color: "white",
+              color: "var(--color-rv-cream)",
               fontSize: 8,
               fontWeight: 800,
               letterSpacing: "0.14em",
@@ -1559,7 +1613,7 @@ function ReelDetailModal({
             position: "absolute",
             top: 14,
             right: 14,
-            background: "white",
+            background: "var(--color-rv-cream)",
             border: "1.5px solid var(--color-rv-line)",
             padding: 6,
             cursor: "pointer",
@@ -1827,7 +1881,7 @@ function ReelDetailModal({
                     <div
                       key={label}
                       style={{
-                        background: "white",
+                        background: "var(--color-rv-cream)",
                         border: "1px solid var(--color-rv-line)",
                         borderLeft: "3px solid var(--color-rv-rec)",
                         padding: "10px 12px",
@@ -1915,7 +1969,7 @@ function ReelDetailModal({
                 <Section title="Transcrição">
                   <div
                     style={{
-                      background: "white",
+                      background: "var(--color-rv-cream)",
                       border: "1px solid var(--color-rv-line)",
                       padding: "12px 14px",
                       fontSize: 12.5,
@@ -2065,7 +2119,7 @@ function IdeaCard({
             top: 8,
             right: 8,
             background: "var(--color-rv-ink)",
-            color: "white",
+            color: "var(--color-rv-cream)",
             fontSize: 8,
             fontWeight: 800,
             letterSpacing: "0.14em",
@@ -2084,7 +2138,7 @@ function IdeaCard({
               top: 8,
               left: 8,
               background: "var(--color-rv-rec)",
-              color: "white",
+              color: "var(--color-rv-cream)",
               fontSize: 8,
               fontWeight: 800,
               letterSpacing: "0.14em",
@@ -2221,7 +2275,7 @@ function IdeaCard({
                   textTransform: "uppercase",
                   padding: "3px 7px",
                   background: "var(--color-rv-ink)",
-                  color: "white",
+                  color: "var(--color-rv-cream)",
                   textDecoration: "none",
                   display: "inline-flex",
                   alignItems: "center",
@@ -2242,7 +2296,7 @@ function IdeaCard({
                   textTransform: "uppercase",
                   padding: "3px 7px",
                   background: "var(--color-rv-rec)",
-                  color: "white",
+                  color: "var(--color-rv-cream)",
                 }}
                 title={`${examplesCount} exemplos curados`}
               >

@@ -422,7 +422,7 @@ function PlanCard({
             top: -12,
             right: 16,
             background: "var(--color-rv-rec)",
-            color: "white",
+            color: "var(--color-rv-cream)",
             fontSize: 10,
             fontWeight: 800,
             letterSpacing: "0.16em",

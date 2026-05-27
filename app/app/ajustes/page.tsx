@@ -168,7 +168,7 @@ export default function AjustesPage() {
                   alignItems: "center",
                   gap: 0,
                   border: "1.5px solid var(--color-rv-ink)",
-                  background: "white",
+                  background: "var(--color-rv-cream)",
                 }}
               >
                 <Instagram
@@ -259,7 +259,7 @@ export default function AjustesPage() {
                       style={{
                         padding: "12px 10px",
                         border: "1.5px solid var(--color-rv-ink)",
-                        background: active ? "var(--color-rv-ink)" : "white",
+                        background: active ? "var(--color-rv-ink)" : "var(--color-rv-cream)",
                         color: active ? "var(--color-rv-paper)" : "var(--color-rv-ink)",
                         cursor: "pointer",
                         textAlign: "left",
@@ -373,7 +373,7 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "11px 14px",
   border: "1.5px solid var(--color-rv-ink)",
-  background: "white",
+  background: "var(--color-rv-cream)",
   fontFamily: "var(--font-jakarta), sans-serif",
   fontSize: 13,
   color: "var(--color-rv-ink)",

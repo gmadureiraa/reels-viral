@@ -45,7 +45,7 @@ export function Footer() {
         >
           <Link
             href="/privacy"
-            className="rv-mono"
+            className="rv-mono transition-colors hover:text-[var(--color-rv-ink)]"
             style={{
               fontSize: 11,
               letterSpacing: "0.14em",
@@ -58,7 +58,7 @@ export function Footer() {
           </Link>
           <Link
             href="/terms"
-            className="rv-mono"
+            className="rv-mono transition-colors hover:text-[var(--color-rv-ink)]"
             style={{
               fontSize: 11,
               letterSpacing: "0.14em",
@@ -73,7 +73,7 @@ export function Footer() {
             href="https://kaleidos.com.br"
             target="_blank"
             rel="noreferrer"
-            className="rv-mono"
+            className="rv-mono transition-colors hover:text-[var(--color-rv-ink)]"
             style={{
               fontSize: 11,
               letterSpacing: "0.14em",

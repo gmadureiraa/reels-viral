@@ -54,7 +54,7 @@ export default function NotFound() {
         <p
           style={{
             fontSize: 14,
-            color: "rgba(26,26,26,0.65)",
+            color: "var(--color-rv-muted, #5C5858)",
             margin: 0,
             lineHeight: 1.5,
           }}
@@ -69,9 +69,9 @@ export default function NotFound() {
             marginTop: 8,
             padding: "11px 22px",
             background: "var(--color-rv-ink, #1A1A1A)",
-            color: "#FFFFFF",
+            color: "var(--color-rv-cream, #FFFFFF)",
             border: "1.5px solid var(--color-rv-ink, #1A1A1A)",
-            boxShadow: "3px 3px 0 0 #FF3D2E",
+            boxShadow: "3px 3px 0 0 var(--color-rv-rec, #FF3D2E)",
             fontFamily:
               "var(--font-mono), 'Geist Mono', ui-monospace, monospace",
             fontSize: 11,

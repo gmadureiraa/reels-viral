@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthClient, getJwtToken } from "@/lib/auth-client";
@@ -36,6 +36,15 @@ export function AuthDialog({
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Esc fecha o dialog (modal pattern). Cleanup remove o listener.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   async function handleGoogle() {
     setGoogleLoading(true);
@@ -125,6 +134,9 @@ export function AuthDialog({
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === "signin" ? "Entrar" : "Criar conta"}
         style={{
           width: "100%",
           maxWidth: 460,
@@ -202,7 +214,7 @@ export function AuthDialog({
             justifyContent: "center",
             gap: 10,
             marginBottom: 14,
-            background: "white",
+            background: "var(--color-rv-cream)",
           }}
         >
           {googleLoading ? (
@@ -317,7 +329,7 @@ export function AuthDialog({
 const inputStyle: React.CSSProperties = {
   width: "100%",
   border: "1.5px solid var(--color-rv-ink)",
-  background: "white",
+  background: "var(--color-rv-cream)",
   padding: "12px 14px",
   fontFamily: "var(--font-jakarta), sans-serif",
   fontSize: 14,

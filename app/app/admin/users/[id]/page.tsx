@@ -231,7 +231,7 @@ export default function AdminUserPage({
                 padding: "10px 14px",
                 fontSize: 11,
                 background: "var(--color-rv-rec)",
-                color: "white",
+                color: "var(--color-rv-cream)",
                 border: "1.5px solid var(--color-rv-ink)",
               }}
             >

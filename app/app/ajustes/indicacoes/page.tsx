@@ -77,7 +77,7 @@ function statusLabel(status: ReferralItem["status"]): {
       return {
         label: "Pago — crédito ativo",
         bg: "var(--color-rv-rec)",
-        fg: "white",
+        fg: "var(--color-rv-cream)",
       };
     case "signup":
       return {
@@ -260,7 +260,7 @@ export default function IndicacoesPage() {
               gap: 12,
               padding: 22,
               border: "1.5px solid var(--color-rv-ink)",
-              background: "white",
+              background: "var(--color-rv-cream)",
               boxShadow: "4px 4px 0 0 var(--color-rv-ink)",
             }}
           >
@@ -298,7 +298,7 @@ export default function IndicacoesPage() {
                 padding: "26px 28px",
                 border: "2px solid var(--color-rv-ink)",
                 background: "var(--color-rv-rec)",
-                color: "white",
+                color: "var(--color-rv-cream)",
                 boxShadow: "6px 6px 0 0 var(--color-rv-ink)",
               }}
             >
@@ -320,7 +320,7 @@ export default function IndicacoesPage() {
                     width: 8,
                     height: 8,
                     borderRadius: "50%",
-                    background: "white",
+                    background: "var(--color-rv-cream)",
                   }}
                 />
                 Seu link de indicação
@@ -346,7 +346,7 @@ export default function IndicacoesPage() {
                     gap: 8,
                     padding: "10px 18px",
                     background: "var(--color-rv-ink)",
-                    color: "white",
+                    color: "var(--color-rv-cream)",
                     border: "1.5px solid var(--color-rv-ink)",
                     fontFamily: "var(--font-mono)",
                     fontSize: 11,
@@ -375,8 +375,8 @@ export default function IndicacoesPage() {
                     gap: 8,
                     padding: "10px 18px",
                     background: "transparent",
-                    color: "white",
-                    border: "1.5px solid white",
+                    color: "var(--color-rv-cream)",
+                    border: "1.5px solid var(--color-rv-cream)",
                     fontFamily: "var(--font-mono)",
                     fontSize: 11,
                     letterSpacing: "0.14em",
@@ -465,7 +465,7 @@ export default function IndicacoesPage() {
             <div
               style={{
                 border: "1.5px solid var(--color-rv-ink)",
-                background: "white",
+                background: "var(--color-rv-cream)",
                 boxShadow: "3px 3px 0 0 var(--color-rv-ink)",
                 overflowX: "auto",
               }}
@@ -599,7 +599,7 @@ export default function IndicacoesPage() {
                 style={{
                   fontFamily: "var(--font-mono)",
                   background: "var(--color-rv-rec)",
-                  color: "white",
+                  color: "var(--color-rv-cream)",
                   padding: "1px 6px",
                   borderRadius: 0,
                 }}
@@ -646,8 +646,8 @@ function StatCard({
       style={{
         padding: 18,
         border: "1.5px solid var(--color-rv-ink)",
-        background: highlight ? "var(--color-rv-rec)" : "white",
-        color: highlight ? "white" : "var(--color-rv-ink)",
+        background: highlight ? "var(--color-rv-rec)" : "var(--color-rv-cream)",
+        color: highlight ? "var(--color-rv-cream)" : "var(--color-rv-ink)",
         boxShadow: "3px 3px 0 0 var(--color-rv-ink)",
       }}
     >
@@ -662,7 +662,7 @@ function StatCard({
           textTransform: "uppercase",
           fontWeight: 700,
           marginBottom: 8,
-          color: highlight ? "white" : "var(--color-rv-ink)",
+          color: highlight ? "var(--color-rv-cream)" : "var(--color-rv-ink)",
         }}
       >
         {icon} {label}
@@ -673,7 +673,7 @@ function StatCard({
           fontSize: 32,
           letterSpacing: "-0.02em",
           lineHeight: 1.05,
-          color: highlight ? "white" : "var(--color-rv-ink)",
+          color: highlight ? "var(--color-rv-cream)" : "var(--color-rv-ink)",
         }}
       >
         {value}

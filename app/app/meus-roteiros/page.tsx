@@ -101,7 +101,18 @@ export default function MyScriptsPage() {
         </p>
 
         {!hydrated ? (
-          <div className="mt-12 rv-shimmer" style={{ height: 240 }} />
+          <div className="mt-12 grid gap-4" aria-hidden="true">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="rv-shimmer"
+                style={{
+                  height: 168,
+                  border: "1.5px solid var(--color-rv-line)",
+                }}
+              />
+            ))}
+          </div>
         ) : scripts.length === 0 ? (
           <div
             className="mt-12 flex flex-col items-center justify-center"
@@ -124,7 +135,7 @@ export default function MyScriptsPage() {
                 marginBottom: 22,
               }}
             >
-              <Play size={22} color="white" />
+              <Play size={22} color="var(--color-rv-cream)" />
             </div>
             <h2
               className="rv-display"

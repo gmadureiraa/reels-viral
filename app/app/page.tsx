@@ -455,7 +455,7 @@ function HomeInner() {
                 className="flex items-stretch gap-2"
                 style={{
                   border: "1.5px solid var(--color-rv-ink)",
-                  background: "white",
+                  background: "var(--color-rv-cream)",
                 }}
               >
                 <input
@@ -478,7 +478,14 @@ function HomeInner() {
                 <button
                   type="button"
                   onClick={handlePaste}
+                  aria-label="Colar link do clipboard"
                   className="flex items-center gap-2 px-4"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--color-rv-soft)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "var(--color-rv-paper)";
+                  }}
                   style={{
                     borderLeft: "1.5px solid var(--color-rv-ink)",
                     background: "var(--color-rv-paper)",
@@ -488,6 +495,7 @@ function HomeInner() {
                     fontWeight: 700,
                     letterSpacing: "0.16em",
                     textTransform: "uppercase",
+                    transition: "background 0.12s",
                   }}
                 >
                   <Clipboard size={14} /> Colar
@@ -507,7 +515,7 @@ function HomeInner() {
                     style={{
                       width: "100%",
                       border: "1.5px solid var(--color-rv-ink)",
-                      background: "white",
+                      background: "var(--color-rv-cream)",
                       padding: "12px 14px",
                       fontFamily: "var(--font-jakarta), sans-serif",
                       fontSize: 14,
@@ -527,7 +535,7 @@ function HomeInner() {
                     style={{
                       width: "100%",
                       border: "1.5px solid var(--color-rv-ink)",
-                      background: "white",
+                      background: "var(--color-rv-cream)",
                       padding: "12px 14px",
                       fontFamily: "var(--font-jakarta), sans-serif",
                       fontSize: 14,
@@ -556,7 +564,7 @@ function HomeInner() {
                           border: "1.5px solid var(--color-rv-ink)",
                           background: active
                             ? "var(--color-rv-ink)"
-                            : "white",
+                            : "var(--color-rv-cream)",
                           color: active
                             ? "var(--color-rv-cream)"
                             : "var(--color-rv-ink)",
@@ -720,7 +728,7 @@ function HomeInner() {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   border: "1.5px solid var(--color-rv-ink)",
-  background: "white",
+  background: "var(--color-rv-cream)",
   padding: "12px 14px",
   fontFamily: "var(--font-jakarta), sans-serif",
   fontSize: 14,
@@ -736,6 +744,7 @@ function QuotaCard() {
     limit: number;
     blocked: boolean;
   } | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancel = false;
@@ -751,6 +760,8 @@ function QuotaCard() {
         if (!cancel) setQuota(data);
       } catch {
         /* silencioso */
+      } finally {
+        if (!cancel) setLoaded(true);
       }
     })();
     return () => {
@@ -758,7 +769,24 @@ function QuotaCard() {
     };
   }, []);
 
-  if (!quota) return null;
+  // Skeleton enquanto a quota carrega — evita o pop-in do card e o
+  // layout shift no header. Mesma footprint do card real.
+  if (!quota) {
+    if (!loaded) {
+      return (
+        <div
+          className="rv-shimmer"
+          aria-hidden="true"
+          style={{
+            minWidth: 180,
+            height: 92,
+            border: "1.5px solid var(--color-rv-line)",
+          }}
+        />
+      );
+    }
+    return null;
+  }
 
   const ratio = quota.limit > 0 ? quota.used / quota.limit : 0;
   const pct = Math.min(100, Math.round(ratio * 100));

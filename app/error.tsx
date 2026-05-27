@@ -41,7 +41,7 @@ export default function GlobalError({
           maxWidth: 540,
           width: "100%",
           padding: 32,
-          background: "#FFFFFF",
+          background: "var(--color-rv-cream, #FFFFFF)",
           border: "1.5px solid var(--color-rv-ink, #1A1A1A)",
           boxShadow: "5px 5px 0 0 var(--color-rv-ink, #1A1A1A)",
           display: "flex",
@@ -55,8 +55,8 @@ export default function GlobalError({
             alignItems: "center",
             gap: 8,
             padding: "5px 11px",
-            background: "#FF3D2E",
-            color: "#FFFFFF",
+            background: "var(--color-rv-rec, #FF3D2E)",
+            color: "var(--color-rv-cream, #FFFFFF)",
             border: "1.5px solid var(--color-rv-ink, #1A1A1A)",
             fontFamily:
               "var(--font-mono), 'Geist Mono', ui-monospace, monospace",
@@ -72,7 +72,7 @@ export default function GlobalError({
               width: 7,
               height: 7,
               borderRadius: "50%",
-              background: "#FFFFFF",
+              background: "var(--color-rv-cream, #FFFFFF)",
             }}
           />
           erro
@@ -96,7 +96,7 @@ export default function GlobalError({
           style={{
             fontSize: 14.5,
             lineHeight: 1.55,
-            color: "rgba(26,26,26,0.75)",
+            color: "var(--color-rv-muted, #5C5858)",
             margin: 0,
           }}
         >
@@ -111,10 +111,10 @@ export default function GlobalError({
               fontFamily:
                 "var(--font-mono), 'Geist Mono', ui-monospace, monospace",
               fontSize: 10.5,
-              color: "rgba(26,26,26,0.55)",
+              color: "var(--color-rv-muted, #5C5858)",
               padding: "6px 10px",
-              background: "rgba(0,0,0,0.04)",
-              border: "1px dashed rgba(0,0,0,0.15)",
+              background: "color-mix(in srgb, var(--color-rv-ink) 5%, transparent)",
+              border: "1px dashed color-mix(in srgb, var(--color-rv-ink) 18%, transparent)",
               wordBreak: "break-all",
             }}
           >
@@ -136,9 +136,9 @@ export default function GlobalError({
             style={{
               padding: "11px 18px",
               background: "var(--color-rv-ink, #1A1A1A)",
-              color: "#FFFFFF",
+              color: "var(--color-rv-cream, #FFFFFF)",
               border: "1.5px solid var(--color-rv-ink, #1A1A1A)",
-              boxShadow: "3px 3px 0 0 #FF3D2E",
+              boxShadow: "3px 3px 0 0 var(--color-rv-rec, #FF3D2E)",
               fontFamily:
                 "var(--font-mono), 'Geist Mono', ui-monospace, monospace",
               fontSize: 11,
