@@ -22,6 +22,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import ThemeToggle from "@/components/ThemeToggle";
+import HeroLoop from "@/components/HeroLoop";
 import {
   ArrowRight,
   Clipboard,
@@ -346,6 +347,11 @@ function LandingPageInner() {
         <div className="rv-eyebrow" style={{ justifyContent: "center", marginBottom: 18 }}>
           <span className="rv-rec-dot" /> ENGENHARIA REVERSA · IA
         </div>
+
+        {/* HERO LOOP — banda cinematográfica decodificando movimento → texto.
+            Reduced-motion gracefully falls back to poster still. */}
+        <HeroLoop />
+
         <h1
           className="rv-display"
           style={{
