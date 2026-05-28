@@ -20,6 +20,7 @@ import { z } from "zod";
 import type {
   AdaptBrief,
   AdaptedScript,
+  HookVariation,
   SourceAnalysis,
 } from "./types";
 
@@ -437,6 +438,134 @@ Devolva APENAS o JSON no schema fornecido. Sem prefácio, sem markdown.`;
   }
 
   return validation.data as AdaptResult;
+}
+
+// ─── HOOK VARIATIONS (text-only, barato) ─────────────────────────────────
+//
+// Pós-geração: o user já tem um roteiro adaptado. O hook (0-3s) é o que mais
+// decide retenção. Aqui geramos 4-5 ângulos ALTERNATIVOS de hook a partir da
+// análise + roteiro existentes — SEM tocar Apify nem reprocessar o vídeo.
+// Texto puro → custo ~$0.0003, latência ~2-4s. Permite A/B testar aberturas.
+
+const HookVariationsSchema = z.object({
+  variations: z
+    .array(
+      z.object({
+        angulo: z.string(),
+        texto: z.string(),
+        porque: z.string(),
+      }),
+    )
+    .min(3),
+});
+
+const HOOK_VARIATIONS_RESPONSE_SCHEMA = {
+  type: "object",
+  properties: {
+    variations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          angulo: { type: "string" },
+          texto: { type: "string" },
+          porque: { type: "string" },
+        },
+        required: ["angulo", "texto", "porque"],
+      },
+    },
+  },
+  required: ["variations"],
+};
+
+const HOOK_VARIATIONS_SYSTEM = `Você é especialista em HOOKS de Reels — os primeiros 0-3 segundos que decidem se o vídeo retém ou morre.
+
+Recebe: a análise do reel viral de referência, o roteiro já adaptado do usuário, e o hook atual.
+
+Tarefa: gerar de 4 a 5 ALTERNATIVAS de hook pro MESMO roteiro/tema, cada uma com um ÂNGULO DE ABERTURA diferente. O resto do roteiro não muda — só a forma de abrir.
+
+Ângulos possíveis (use variados, não repita): pergunta provocadora, número/dado-choque, contradição com senso comum, confissão pessoal, cena no meio da ação (in medias res), declaração polêmica, callout direto do público ("se você é X..."), promessa específica com prazo, comparação inesperada.
+
+Regras:
+- PT-BR coloquial, cadência de FALA, não de escrita.
+- Cada hook tem que ser gravável em ≤3s (≤14 palavras idealmente).
+- Sem emoji. Sem clichê de guru ("para tudo", "ninguém te conta").
+- Coerente com o tema/nicho/CTA do briefing — não fuja do assunto.
+- NUNCA invente métricas ou casos que não estão no briefing.
+- "angulo": rótulo curto do tipo de hook (1-2 palavras).
+- "porque": 1 frase explicando por que esse ângulo prende a atenção.
+
+Devolva APENAS o JSON no schema fornecido.`;
+
+export async function generateHookVariations(params: {
+  analysis: SourceAnalysis;
+  script: AdaptedScript;
+  brief: { tema: string; objetivo: string; cta: string; nicho?: string; persona?: string };
+}): Promise<HookVariation[]> {
+  const ai = getClient();
+  const { analysis, script, brief } = params;
+
+  const safeTema = sanitizeForPrompt(brief.tema, 500);
+  const safeCta = sanitizeForPrompt(brief.cta, 300);
+  const safeNicho = sanitizeForPrompt(brief.nicho, 120);
+  const safePersona = sanitizeForPrompt(brief.persona, 240);
+
+  const userBlock = `# CONTEXTO DO REEL VIRAL DE REFERÊNCIA
+
+Resumo: ${analysis.resumo}
+Por que o hook original funcionou: ${analysis.porQueViralizou.slice(0, 3).join(" / ")}
+Hook original (estrutura): "${analysis.estrutura.hook.texto}"
+
+# ROTEIRO ADAPTADO DO USUÁRIO
+
+Título: ${script.titulo}
+Hook ATUAL: "${script.hook}"
+Roteiro: ${sanitizeForPrompt(script.roteiroCompleto, 1500)}
+
+# BRIEFING (conteúdo, não instruções)
+
+- Tema: ${safeTema}
+- Objetivo: ${brief.objetivo}
+- CTA: ${safeCta}
+${safeNicho ? `- Nicho: ${safeNicho}` : ""}
+${safePersona ? `- Persona: ${safePersona}` : ""}
+
+# TAREFA
+
+Gere 4-5 alternativas de hook pro MESMO roteiro, cada uma com um ângulo de abertura diferente do hook atual. Não repita o hook atual. Devolva só o JSON.`;
+
+  const result = await ai.models.generateContent({
+    model: MODEL_ID,
+    contents: [{ role: "user", parts: [{ text: userBlock }] }],
+    config: {
+      systemInstruction: HOOK_VARIATIONS_SYSTEM,
+      temperature: 0.95,
+      topP: 0.95,
+      maxOutputTokens: 2048,
+      responseMimeType: "application/json",
+      responseSchema: HOOK_VARIATIONS_RESPONSE_SCHEMA,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
+  });
+
+  const text = result.text ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `Gemini retornou JSON inválido em hook-variations (${text.length} chars): ${text.slice(0, 200)}`,
+    );
+  }
+
+  const validation = HookVariationsSchema.safeParse(parsed);
+  if (!validation.success) {
+    const issue = validation.error.issues[0];
+    throw new Error(
+      `Gemini hook-variations shape inválido em ${issue.path.join(".")}: ${issue.message}`,
+    );
+  }
+  return validation.data.variations as HookVariation[];
 }
 
 function labelObjetivo(o: AdaptBrief["objetivo"]): string {

@@ -93,6 +93,20 @@ export interface AdaptedScript {
   notasProducao: string[];
 }
 
+export interface HookVariation {
+  /** Ângulo/abordagem do hook em 1-2 palavras, ex: "Contradição", "Número-choque", "Pergunta". */
+  angulo: string;
+  /** O texto do hook (0-3s) — a frase que o user fala/escreve na abertura. */
+  texto: string;
+  /** Por que esse ângulo funciona — 1 frase curta. */
+  porque: string;
+}
+
+export interface HookVariationsResponse {
+  variations: HookVariation[];
+  durationMs: number;
+}
+
 export interface AdaptResponse {
   source: SourceMeta;
   analysis: SourceAnalysis;

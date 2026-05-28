@@ -15,12 +15,14 @@ import {
   Play,
   Quote,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
-import type { AdaptResponse, Scene } from "@/lib/types";
+import type { AdaptResponse, HookVariation, Scene } from "@/lib/types";
 import { formatDuration, formatNumber } from "@/lib/utils";
 import { downloadMarkdown } from "@/lib/export-markdown";
 import { openSvBridge } from "@/lib/sv-bridge";
 import { saveScript } from "@/lib/storage";
+import { getJwtToken } from "@/lib/auth-client";
 import { Teleprompter } from "@/components/teleprompter";
 import { track } from "@/lib/analytics";
 
@@ -55,6 +57,9 @@ export function ResultView({
   const [copied, setCopied] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [teleprompterOpen, setTeleprompterOpen] = useState(false);
+  const [hookVars, setHookVars] = useState<HookVariation[] | null>(null);
+  const [hookVarsLoading, setHookVarsLoading] = useState(false);
+  const [copiedHookVar, setCopiedHookVar] = useState<number | null>(null);
 
   // Auto-save assim que monta — DB se logado, localStorage anônimo.
   useEffect(() => {
@@ -86,6 +91,59 @@ export function ResultView({
       format: "markdown",
       scenes_count: data.script.scenes.length,
     });
+  }
+
+  async function handleHookVariations() {
+    if (hookVarsLoading) return;
+    setHookVarsLoading(true);
+    track("hook_variations_requested", {
+      scenes_count: data.script.scenes.length,
+    });
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      // Anexa JWT se logado — sobe o rate-limit de 8/h pra 30/h.
+      try {
+        const token = await getJwtToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      } catch {
+        /* anônimo segue normal */
+      }
+      const res = await fetch("/api/hook-variations", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          analysis: data.analysis,
+          script: data.script,
+          brief: {
+            tema: tema ?? data.script.titulo,
+            objetivo: "engajamento",
+            cta: "",
+          },
+        }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(body.error ?? "Falha ao gerar variações de hook");
+        return;
+      }
+      const body = (await res.json()) as { variations: HookVariation[] };
+      setHookVars(body.variations);
+      toast.success(`${body.variations.length} variações geradas`);
+    } catch {
+      toast.error("Erro de rede ao gerar variações");
+    } finally {
+      setHookVarsLoading(false);
+    }
+  }
+
+  function handleCopyHookVar(i: number, text: string) {
+    navigator.clipboard.writeText(text);
+    setCopiedHookVar(i);
+    toast.success("Hook copiado");
+    setTimeout(() => setCopiedHookVar(null), 2000);
+    track("script_exported", { format: "clipboard", section: "hook_variation" });
   }
 
   function handleBridgeSv() {
@@ -489,6 +547,106 @@ export function ResultView({
             {copied === "Hook" ? <Check size={12} /> : <Copy size={12} />}
             {copied === "Hook" ? "Copiado" : "Copiar"}
           </button>
+        </div>
+
+        {/* HOOK VARIATIONS — A/B testar aberturas (text-only, barato) */}
+        <div className="mt-4">
+          {!hookVars && (
+            <button
+              onClick={handleHookVariations}
+              disabled={hookVarsLoading}
+              className="rv-btn rv-btn-ghost"
+              style={{ padding: "8px 14px", fontSize: 10 }}
+              title="Gera 4-5 ângulos alternativos de abertura pro mesmo roteiro"
+            >
+              <Sparkles size={12} />
+              {hookVarsLoading ? "Gerando variações…" : "Gerar variações de hook"}
+            </button>
+          )}
+
+          {hookVars && hookVars.length > 0 && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                <div className="rv-eyebrow">
+                  <span className="rv-rec-dot" /> {hookVars.length} ÂNGULOS DE HOOK · A/B TESTE
+                </div>
+                <button
+                  onClick={handleHookVariations}
+                  disabled={hookVarsLoading}
+                  className="rv-btn rv-btn-ghost"
+                  style={{ padding: "5px 10px", fontSize: 9, boxShadow: "none" }}
+                >
+                  <Sparkles size={11} />
+                  {hookVarsLoading ? "Gerando…" : "Gerar de novo"}
+                </button>
+              </div>
+              <div
+                className="grid gap-3"
+                style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}
+              >
+                {hookVars.map((hv, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      background: "var(--color-rv-soft)",
+                      border: "1.5px solid var(--color-rv-ink)",
+                      boxShadow: "3px 3px 0 0 var(--color-rv-ink)",
+                      padding: "16px 18px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="rv-mono"
+                        style={{
+                          fontSize: 9,
+                          letterSpacing: "0.18em",
+                          textTransform: "uppercase",
+                          color: "var(--color-rv-rec)",
+                          fontWeight: 800,
+                        }}
+                      >
+                        {hv.angulo}
+                      </span>
+                      <button
+                        onClick={() => handleCopyHookVar(i, hv.texto)}
+                        className="rv-btn rv-btn-ghost"
+                        style={{ padding: "4px 8px", fontSize: 8, boxShadow: "none" }}
+                        aria-label="Copiar hook"
+                      >
+                        {copiedHookVar === i ? <Check size={10} /> : <Copy size={10} />}
+                        {copiedHookVar === i ? "OK" : "Copiar"}
+                      </button>
+                    </div>
+                    <p
+                      className="rv-display"
+                      style={{
+                        fontSize: 17,
+                        lineHeight: 1.25,
+                        color: "var(--color-rv-ink)",
+                        fontStyle: "italic",
+                        margin: 0,
+                      }}
+                    >
+                      &ldquo;{hv.texto}&rdquo;
+                    </p>
+                    <p
+                      style={{
+                        fontSize: 11,
+                        lineHeight: 1.45,
+                        color: "var(--color-rv-muted)",
+                        margin: 0,
+                      }}
+                    >
+                      {hv.porque}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Roteiro completo */}
