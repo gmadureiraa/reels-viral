@@ -81,6 +81,23 @@
     font-feature-settings: "ss01", "cv11";
   }
 
+  /* ───────────────────────────────────────────────────────────
+     Foco visível por teclado (WCAG 2.4.7 — Focus Visible).
+     Anel no accent da marca (rosa no light / verde no dark via
+     --color-rv-rec) com offset pra não colar na borda brutalista.
+     Só em :focus-visible → não polui clique de mouse, só Tab.
+     Aplica em qualquer alvo focável (botões, links, inputs, [tabindex]).
+     ─────────────────────────────────────────────────────────── */
+  :focus-visible {
+    outline: 2px solid var(--color-rv-rec);
+    outline-offset: 2px;
+    border-radius: 1px;
+  }
+  /* Remove o anel default do user-agent quando NÃO é foco por teclado. */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
   *::selection {
     background: var(--color-rv-rec);
     color: var(--color-rv-cream);
@@ -285,5 +302,15 @@
 @media (prefers-reduced-motion: reduce) {
   html.vt-theme-toggling::view-transition-new(root) {
     animation: none;
+  }
+  /* Respeita usuários com sensibilidade a movimento: desliga loops
+     decorativos (pulse/shimmer/spin) e encurta transições. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

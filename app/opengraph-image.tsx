@@ -23,10 +23,10 @@ export default function OgImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background: "#F5F1E8",
+          background: "#FAFAFA",
           padding: 64,
           fontFamily: "system-ui",
-          color: "#1A1A1A",
+          color: "#141414",
           position: "relative",
         }}
       >
@@ -49,8 +49,8 @@ export default function OgImage() {
               alignItems: "center",
               gap: 10,
               padding: "8px 14px",
-              border: "2px solid #1A1A1A",
-              background: "#FF3D2E",
+              border: "2px solid #141414",
+              background: "#D262B2",
               color: "#FFFFFF",
             }}
           >
@@ -99,7 +99,7 @@ export default function OgImage() {
               maxWidth: 980,
             }}
           >
-            <span style={{ background: "#FF3D2E", color: "#FFFFFF", padding: "0 14px" }}>
+            <span style={{ background: "#D262B2", color: "#FFFFFF", padding: "0 14px" }}>
               Recebe um roteiro novo.
             </span>
           </div>

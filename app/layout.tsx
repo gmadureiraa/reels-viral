@@ -71,7 +71,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FAFAFA",
+  // themeColor media-aware: a barra do browser/PWA acompanha o tema.
+  // Light → branco Kaleidos #FAFAFA · Dark → preto Kaleidos #000.
+  // Sem isso a UI escura ficava com chrome branco (mismatch visual).
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FAFAFA" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
   width: "device-width",
   initialScale: 1,
 };

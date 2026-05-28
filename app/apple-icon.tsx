@@ -17,14 +17,14 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#F5F1E8",
-          color: "#1A1A1A",
+          background: "#FAFAFA",
+          color: "#141414",
           fontWeight: 800,
           fontSize: 96,
           letterSpacing: "-0.05em",
           fontFamily: "system-ui",
           position: "relative",
-          border: "8px solid #1A1A1A",
+          border: "8px solid #141414",
         }}
       >
         RV
@@ -36,7 +36,7 @@ export default function AppleIcon() {
             width: 28,
             height: 28,
             borderRadius: "50%",
-            background: "#FF3D2E",
+            background: "#D262B2",
           }}
         />
       </div>
