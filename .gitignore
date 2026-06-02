@@ -9,11 +9,3 @@ next-env.d.ts
 
 # Security audits — local-only, contém detalhes de vulnerabilidades
 .security/
-
-# Higgsfield raw outputs (não commitar). Versões comprimidas / sized
-# ficam em public/generated/ e são versionadas.
-public/raw/
-public/generated/_raw/
-*.higgsfield.png
-*.higgsfield.mp4
-
