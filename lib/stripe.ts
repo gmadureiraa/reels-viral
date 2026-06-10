@@ -37,7 +37,6 @@ function buildStripe(): Stripe {
 export const stripe = new Proxy({} as Stripe, {
   get(_target, prop) {
     if (!_stripeInstance) _stripeInstance = buildStripe();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (_stripeInstance as any)[prop];
   },
 });

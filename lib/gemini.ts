@@ -294,7 +294,6 @@ function sanitizeForPrompt(input: string | undefined, maxLen = 280): string {
   if (!input) return "";
   return input
     .replace(/\n{3,}/g, "\n\n")
-    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
     .trim()
     .slice(0, maxLen);

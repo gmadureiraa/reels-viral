@@ -7,8 +7,8 @@ Terceiro app do **combo viral Kaleidos**:
 | App | URL | Foco |
 |-----|-----|------|
 | **Sequência Viral** | viral.kaleidos.com.br | Carrosseis virais Instagram |
-| **Viral Hunter** | viral-hunter-phi.vercel.app | Descoberta de tendências (news + IG + HN + Reddit) |
-| **Reels Viral** | (a deployar) | Roteiros de Reels/TikTok cena por cena |
+| **Radar Viral** | radar.kaleidos.com.br | Descoberta de tendências (IG + YouTube + TikTok + Threads + RSS + newsletter) |
+| **Reels Viral** | reels-viral.vercel.app | Roteiros de Reels/TikTok cena por cena |
 
 ---
 
@@ -57,42 +57,33 @@ Abre `http://localhost:3000`.
 
 ### Env vars
 
-```bash
-# ── Pipeline ────────────────────────────────────────────────────────
-APIFY_API_KEY=...                    # apify.com → Settings → API tokens
-GEMINI_API_KEY=...                   # ai.google.dev → Get API key
+A lista completa e comentada vive em [`.env.example`](./.env.example) — é a
+fonte da verdade. Resumo dos grupos:
 
-# ── Neon Postgres ───────────────────────────────────────────────────
-DATABASE_URL=...                     # connection string com pooler
+| Grupo | Vars | Obrigatório |
+|-------|------|-------------|
+| Pipeline | `APIFY_API_KEY`, `GEMINI_API_KEY` | sim |
+| Neon Postgres | `DATABASE_URL` | sim (logado) |
+| Neon Auth | `NEXT_PUBLIC_NEON_AUTH_URL`, `NEON_AUTH_JWKS_URL`, `NEON_AUTH_ISSUER`*, `NEON_AUTH_AUDIENCE`* | sim (login/paywall) |
+| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET_RV`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_RV_BASIC_MONTH`, `STRIPE_PRICE_RV_MAX_MONTH` | billing |
+| Upstash Redis | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | recomendado em prod (rate-limit distribuído; sem isso cai pra Map in-memory) |
+| Resend | `RESEND_API_KEY`, `RESEND_AUDIENCE_ID` | emails/leads/automações |
+| Crons | `CRON_SECRET` | autentica os 3 crons do `vercel.json` |
+| Admin | `ADMIN_EMAILS` (CSV) | opcional |
+| Kill switches | `RV_PIPELINE_DISABLED`, `SOFT_DAILY_CAP_USD` | opcional |
+| Analytics | `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`, `NEXT_PUBLIC_POSTHOG_HOST`, `NEXT_PUBLIC_GA_ID` | opcional |
+| Site | `NEXT_PUBLIC_SITE_URL` | links de email/OG/redirect Stripe |
 
-# ── Neon Auth (Better Auth) ─────────────────────────────────────────
-NEXT_PUBLIC_NEON_AUTH_URL=...        # endpoint pra signin/signup
-NEON_AUTH_JWKS_URL=...               # JWKS pra validar JWT no server
-
-# ── Stripe (paywall + subscriptions) ────────────────────────────────
-STRIPE_SECRET_KEY=...                # mesma conta Stripe do SV
-STRIPE_WEBHOOK_SECRET_RV=...         # gerado ao criar webhook endpoint
-
-# ── Admin guard ─────────────────────────────────────────────────────
-ADMIN_EMAILS=email1@x.com,email2@y.com  # comma-sep, opcional
-                                     # default: gf.madureira@hotmail.com,
-                                     # gf.madureiraa@gmail.com
-
-# ── Cost guard global (kill switch — opcional) ──────────────────────
-SOFT_DAILY_CAP_USD=20                # ex: $20/dia. Free + anon bloqueados
-                                     # quando ai_usage do dia ≥ cap.
-                                     # Pagantes seguem normal.
-
-# ── LinkedIn scrape (DESATIVADO no Radar) ───────────────────────────
-# ENABLE_LINKEDIN_SCRAPE=true        # só RV não usa, ignorar.
-```
+\* `NEON_AUTH_ISSUER` / `NEON_AUTH_AUDIENCE`: quando setados, o `jwtVerify`
+fica strict (valida issuer/audience).
 
 ### Migration
 
 ```bash
 DATABASE_URL=<prod> bun scripts/migrate.ts
 # Cria tabelas: scripts, scrape_cache, leads, user_subscriptions,
-# library_reels, ai_usage, stripe_webhook_events. Idempotente.
+# user_profiles, user_referrals, library_reels, library_ideas, ai_usage,
+# stripe_webhook_events. Idempotente.
 ```
 
 > **⚠️ ai_usage em prod (audit 2026-05-02):** se `ai_usage` não existir
@@ -124,17 +115,19 @@ Eventos: `checkout.session.completed`, `customer.subscription.updated`,
 
 ### Deploy Vercel
 
-Vercel Hobby tem limite de 60s no Node runtime. As 4 env vars acima
-precisam estar configuradas em **Production** scope:
+As funções com `maxDuration: 60` (ex: `api/adapt-reel`) precisam de plano
+com limite ≥ 60s — `vercel.json` já declara os limites por rota. Configurar
+as env vars de `.env.example` em **Production** scope (pelo menos as
+obrigatórias da tabela acima) antes do primeiro deploy:
 
 ```bash
-# Production env vars (adicionar pelo dashboard ou CLI)
+# Production env vars (adicionar pelo dashboard ou via CLI)
 vercel env add APIFY_API_KEY production
 vercel env add GEMINI_API_KEY production
 vercel env add DATABASE_URL production
 vercel env add NEXT_PUBLIC_NEON_AUTH_URL production
 vercel env add NEON_AUTH_JWKS_URL production
-vercel env add NEXT_PUBLIC_NEON_DATA_API production
+# ... + Stripe, Upstash, Resend, CRON_SECRET (ver .env.example)
 
 # Migration roda só uma vez (depois que DATABASE_URL tá no .env.local)
 bun scripts/migrate.ts
@@ -143,50 +136,70 @@ bun scripts/migrate.ts
 vercel --prod
 ```
 
+**Crons (`vercel.json`):** `lead-automation` (13h UTC), `idle-5d` (13h UTC),
+`power-user` (14h UTC). Todos validam o header `Authorization` contra
+`CRON_SECRET`.
+
 ---
 
 ## Estrutura
 
+Atualmente: **12 páginas** + **29 API routes**.
+
 ```
 app/
-  page.tsx                       # / — landing pública (hero + input + Gerar)
-  layout.tsx                     # root: fonts + metadata + Toaster + Footer
-  globals.css                    # design system @theme
+  page.tsx                          # / — landing pública (hero + input + Gerar)
+  privacy/page.tsx                  # /privacy
+  terms/page.tsx                    # /terms
+  layout.tsx                        # root: fonts + metadata + Toaster + Footer
+  globals.css                       # design system @theme
 
-  app/                           # /app — app interno autenticado
-    layout.tsx                   # sidebar fixed (cream+REC+ink) + auth gate
-    page.tsx                     # /app — form completo + result inline
-    biblioteca/page.tsx          # /app/biblioteca — galeria com paywall blur
-    meus-roteiros/page.tsx       # /app/meus-roteiros — histórico
-    meus-roteiros/[id]/page.tsx  # detalhe roteiro
-    precos/page.tsx              # /app/precos — 3 planos + Stripe checkout
-    admin/page.tsx               # /admin — KPIs + users + custos (admin only)
+  app/                              # /app — app interno autenticado
+    layout.tsx                      # sidebar fixed (cream+REC+ink) + auth gate
+    page.tsx                        # /app — form completo + result inline
+    biblioteca/page.tsx             # /app/biblioteca — galeria com paywall blur
+    meus-roteiros/page.tsx          # /app/meus-roteiros — histórico
+    meus-roteiros/[id]/page.tsx     # /app/meus-roteiros/[id] — detalhe roteiro
+    precos/page.tsx                 # /app/precos — 3 planos + Stripe checkout
+    ajustes/page.tsx                # /app/ajustes — conta/assinatura
+    ajustes/indicacoes/page.tsx     # /app/ajustes/indicacoes — Indique-e-Ganhe
+    admin/page.tsx                  # /app/admin — KPIs + custos (admin only)
+    admin/users/[id]/page.tsx       # /app/admin/users/[id] — detalhe de usuário
 
-  api/
-    adapt-reel/route.ts          # core: Apify + Gemini Flash (síncrono)
-    quota/route.ts               # GET quota status pro client
-    library/route.ts             # GET reels biblioteca (paywall server-side)
-    admin/stats/route.ts         # GET payload completo do dashboard admin
-    stripe/checkout/route.ts     # POST cria Stripe session
-    stripe/webhook/route.ts      # eventos sub.* (filtra metadata.app=rv)
+  api/                              # 29 route handlers
+    adapt-reel/route.ts             # core: Apify + Gemini Flash (síncrono)
+    hook-variations/route.ts        # variações de hook a partir de um roteiro
+    quota/route.ts                  # GET quota status pro client
+    img/route.ts                    # proxy de imagem (CDN IG sem CORS)
+    scripts/route.ts, scripts/[id]  # CRUD de roteiros do usuário
+    me/profile, me/subscription     # dados do usuário logado
+    library/route.ts + [id] + frames + ideas + admin/*   # biblioteca pública/admin
+    referrals/me + list + track     # programa Indique-e-Ganhe
+    lead/route.ts + lead/feedback   # captura + feedback de leads
+    unsubscribe/route.ts            # opt-out de emails
+    auth/post-signup/route.ts       # hook pós-cadastro
+    stripe/checkout + portal + webhook   # billing (webhook filtra metadata.app=rv)
+    admin/stats + admin/users/[id]  # payloads do dashboard admin
+    cron/lead-automation + idle-5d + power-user   # crons (Authorization: CRON_SECRET)
 
 components/
-  auth-dialog.tsx                # Login/Signup + Google OAuth
-  quota-blocked-modal.tsx        # paywall ao bater limite mensal
-  loading-pipeline.tsx           # progress animado durante pipeline
-  result-view.tsx                # roteiro + storyboard cena-por-cena
+  auth-dialog.tsx                   # Login/Signup + Google OAuth
+  quota-blocked-modal.tsx           # paywall ao bater limite mensal
+  loading-pipeline.tsx              # progress animado durante pipeline
+  result-view.tsx                   # roteiro + storyboard cena-por-cena
 
 lib/
-  auth-client.ts                 # Neon Auth (Better Auth) lazy client
-  server-auth.ts                 # JWT validation server-side
-  admin.ts + admin-emails.ts     # ADMIN_EMAILS guard
-  pricing.ts                     # PLANS_RV (free/basic/max) + helpers
-  subscriptions.ts               # getUserSubscription + getQuotaStatus
-  stripe.ts                      # SDK lazy (proxy)
-  cost-tracking.ts               # logUsage + estimateGeminiCost
-  cost-guard.ts                  # kill switch global (SOFT_DAILY_CAP_USD)
-  apify.ts + gemini.ts           # provedores
-  types.ts + utils.ts            # shared
+  auth-client.ts                    # Neon Auth (Better Auth) lazy client
+  server-auth.ts                    # JWT validation server-side
+  admin.ts + admin-emails.ts        # ADMIN_EMAILS guard
+  pricing.ts                        # PLANS_RV (free/basic/max) + helpers
+  subscriptions.ts                  # getUserSubscription + getQuotaStatus
+  rate-limit.ts                     # Upstash Ratelimit + fallback in-memory
+  stripe.ts                         # SDK lazy (proxy)
+  cost-tracking.ts                  # logUsage + estimateGeminiCost
+  cost-guard.ts                     # kill switch global (SOFT_DAILY_CAP_USD)
+  apify.ts + gemini.ts              # provedores
+  types.ts + utils.ts               # shared
 ```
 
 ### Fluxo end-to-end
@@ -239,23 +252,26 @@ Pulsing REC dot em todas as eyebrows e header.
 
 ## Roadmap
 
-### MVP (atual)
+### Entregue
 - [x] Adapt Reel (link → roteiro completo)
-- [x] Análise estrutural (5 blocos)
-- [x] Storyboard cena por cena com tempo, papel, visual, copy, B-roll
-- [x] Caption sugerida + notas de produção
-- [x] Copy-to-clipboard em todo lugar
+- [x] Análise estrutural + storyboard cena por cena (tempo, papel, visual, copy, B-roll)
+- [x] Caption sugerida + notas de produção + copy-to-clipboard
+- [x] Variações de hook (`/api/hook-variations`)
+- [x] Auth (Neon Auth) + persistência (Neon Postgres)
+- [x] Quota/paywall por plano (free 3 / basic 30 / max 100 reels/mês)
+- [x] Stripe billing — checkout + customer portal + webhook
+- [x] Biblioteca de reels (galeria pública + admin)
+- [x] Programa Indique-e-Ganhe (referrals)
+- [x] Dashboard admin (KPIs, custos, usuários)
+- [x] Rate-limit distribuído (Upstash) + cost guard global
+- [x] Automações de email por cron (lead-automation, idle-5d, power-user)
+- [x] Bridge ← Radar Viral (landing aceita `?url=`/`?reel=`/`?topic=`)
 
-### P1
-- [ ] Auth (Neon Auth) + persistência (Neon Postgres)
+### Próximo
 - [ ] "Adaptar Criador" — input perfil IG, retorna padrões do criador
 - [ ] Bridge → Sequência Viral (botão "transformar em carrossel")
 - [ ] Voice clone usando `voice_samples` do SV
-- [ ] Stripe billing (créditos por adaptação)
-
-### P2
 - [ ] Formatos do zero (Análise de Perfil, Tela Dividida, Tweet/Texto, Storytelling)
-- [ ] Bridge → Viral Hunter (descobrir reels virais por nicho)
 - [ ] Mobile-first storyboard (vertical scroll-snap 9:16)
 
 ---
