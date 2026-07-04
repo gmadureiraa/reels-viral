@@ -15,6 +15,8 @@
  */
 
 import { NextResponse } from "next/server";
+import { lookup } from "node:dns/promises";
+import net from "node:net";
 
 export const runtime = "nodejs";
 
@@ -32,6 +34,45 @@ const ALLOWED_HOST_PATTERNS = [
 
 function isAllowed(host: string): boolean {
   return ALLOWED_HOST_PATTERNS.some((pattern) => pattern.test(host));
+}
+
+function isPrivateIp(ip: string): boolean {
+  const kind = net.isIP(ip);
+  if (kind === 4) {
+    const p = ip.split(".").map(Number);
+    if (p.length !== 4 || p.some((n) => Number.isNaN(n))) return true;
+    const [a, b] = p;
+    if (a === 10) return true;
+    if (a === 127) return true;
+    if (a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    if (a >= 224) return true;
+    return false;
+  }
+  if (kind === 6) {
+    const lower = ip.toLowerCase();
+    if (lower === "::1" || lower === "::") return true;
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
+    if (lower.startsWith("fe80")) return true;
+    const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+    if (mapped) return isPrivateIp(mapped[1]);
+    return false;
+  }
+  return false;
+}
+
+async function isUpstreamHostSafe(hostname: string): Promise<boolean> {
+  if (net.isIP(hostname)) return !isPrivateIp(hostname);
+  try {
+    const addrs = await lookup(hostname, { all: true });
+    if (addrs.length === 0) return false;
+    return addrs.every((a) => !isPrivateIp(a.address));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -75,6 +116,13 @@ export async function GET(req: Request) {
   if (!isAllowed(parsed.hostname)) {
     return NextResponse.json(
       { error: `host not allowed: ${parsed.hostname}` },
+      { status: 403 },
+    );
+  }
+
+  if (!(await isUpstreamHostSafe(parsed.hostname))) {
+    return NextResponse.json(
+      { error: "host not allowed" },
       { status: 403 },
     );
   }
