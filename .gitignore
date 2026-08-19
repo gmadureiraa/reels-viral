@@ -9,3 +9,8 @@ next-env.d.ts
 
 # Security audits — local-only, contém detalhes de vulnerabilidades
 .security/
+
+# env (generico) - security 2026-08-19
+.env
+.env.*
+!.env.example
